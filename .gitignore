@@ -1,0 +1,32 @@
+# Frappe / Bench runtime
+frappe-bench/
+bench-env/
+env/
+sites/
+logs/
+
+# Secrets / environment
+.env
+.env.*
+*.env
+.secrets/
+*.sql
+*.sql.gz
+backups/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / build
+node_modules/
+dist/
+build/
+
+# Editor / OS
+.vscode/
+.DS_Store
