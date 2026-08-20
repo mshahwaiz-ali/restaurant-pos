@@ -1,5 +1,9 @@
 # Frappe / Bench runtime
-frappe-bench/
+frappe-bench/*
+!frappe-bench/apps/
+frappe-bench/apps/*
+!frappe-bench/apps/ledgix_saas/
+!frappe-bench/apps/ledgix_saas/**
 bench-env/
 env/
 sites/
@@ -30,3 +34,6 @@ build/
 # Editor / OS
 .vscode/
 .DS_Store
+
+# Local setup helpers
+scripts/
