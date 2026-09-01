@@ -52,13 +52,23 @@ update_website_context = [
 ]
 
 # Fiscal attributes captured on an open restaurant line are part of the
-# transaction snapshot. Keep the controller focused on operational invariants
-# while this cross-cutting hook locks/recalculates the full FBR/tax snapshot.
+# transaction snapshot. Financial adjustments on an open check are service-owned.
 doc_events = {
 	"Ledgix Restaurant Order Item": {
 		"before_insert": "ledgix_saas.services.restaurant_tax_snapshots.before_insert_order_item",
 		"validate": "ledgix_saas.services.restaurant_tax_snapshots.validate_order_item_tax_snapshot",
 	},
+	"Ledgix Restaurant Order": {
+		"validate": "ledgix_saas.services.restaurant_settlement.validate_order_adjustment_mutation",
+	},
+}
+
+# Ledgix Sale remains the single finalized fiscal/payment document. The override
+# changes only restaurant-source policy: locked tax snapshots and no second stock
+# posting after KOT consumption. Ordinary Retail/B2B Sale behavior delegates to
+# the original controller unchanged.
+override_doctype_class = {
+	"Ledgix Sale": "ledgix_saas.overrides.restaurant_sale.RestaurantAwareLedgixSale",
 }
 
 # Keep legacy HTTP contracts stable while routing them through the current
