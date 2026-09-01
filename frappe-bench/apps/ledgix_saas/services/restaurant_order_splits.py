@@ -16,12 +16,20 @@ from ledgix_saas.services.restaurant_orders import (
 PROTECTED_KITCHEN_STATUSES = {"Fired", "Preparing", "Ready", "Served"}
 
 
+def _validate_split_replay(source, destination):
+	if destination.split_from_order != source.name:
+		frappe.throw("Client Order ID is already used by an unrelated Restaurant Order.")
+	_validate_compatible_orders(source, destination)
+
+
 def _create_sibling_order(source, client_order_id):
 	if not client_order_id:
 		frappe.throw("Client Order ID is required for an idempotent check split.")
 	existing = frappe.db.get_value("Ledgix Restaurant Order", {"client_order_id": client_order_id}, "name")
 	if existing:
-		return frappe.get_doc("Ledgix Restaurant Order", existing), False
+		destination = frappe.get_doc("Ledgix Restaurant Order", existing)
+		_validate_split_replay(source, destination)
+		return destination, False
 
 	sibling = frappe.get_doc({
 		"doctype": "Ledgix Restaurant Order",
@@ -111,12 +119,16 @@ def split_check_by_items(source_order, selections, client_order_id, reason=None)
 	reason = str(reason or "").strip()
 	if not reason:
 		frappe.throw("Split reason is required.")
+	if not client_order_id:
+		frappe.throw("Client Order ID is required for an idempotent check split.")
 
-	existing = frappe.db.get_value("Ledgix Restaurant Order", {"client_order_id": client_order_id}, "name") if client_order_id else None
+	existing = frappe.db.get_value("Ledgix Restaurant Order", {"client_order_id": client_order_id}, "name")
 	if existing:
+		destination = frappe.get_doc("Ledgix Restaurant Order", existing)
+		_validate_split_replay(source, destination)
 		return {
 			"source": get_order_payload(source.name),
-			"split": get_order_payload(existing),
+			"split": get_order_payload(destination.name),
 			"idempotent_replay": True,
 		}
 
@@ -187,6 +199,12 @@ def split_check_by_seat(source_order, seat_no, client_order_id, reason=None):
 def merge_checks(source_order, destination_order, reason=None):
 	if source_order == destination_order:
 		return get_order_payload(destination_order)
+
+	source_snapshot = frappe.get_doc("Ledgix Restaurant Order", source_order)
+	ensure_branch_access(source_snapshot.branch)
+	if source_snapshot.status == "Voided" and str(source_snapshot.void_reason or "").startswith(f"Merged into {destination_order}:"):
+		return get_order_payload(destination_order)
+
 	source = _active_order(source_order)
 	destination = _active_order(destination_order)
 	_validate_compatible_orders(source, destination)
