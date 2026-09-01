@@ -1,0 +1,30 @@
+{
+ "actions": [],
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["item","quantity","uom","stock_quantity","received_stock_quantity","outstanding_stock_quantity","rate","amount","stock_uom_snapshot","stock_rate"],
+ "fields": [
+  {"fieldname":"item","fieldtype":"Link","in_list_view":1,"label":"Item","options":"Ledgix Item","reqd":1},
+  {"default":"1","fieldname":"quantity","fieldtype":"Float","in_list_view":1,"label":"Ordered Quantity","precision":"6","reqd":1},
+  {"fieldname":"uom","fieldtype":"Link","in_list_view":1,"label":"Order UOM","options":"Ledgix UOM","reqd":1},
+  {"default":"0","fieldname":"stock_quantity","fieldtype":"Float","label":"Ordered Stock Quantity","precision":"6","read_only":1},
+  {"default":"0","fieldname":"received_stock_quantity","fieldtype":"Float","in_list_view":1,"label":"Received Stock Quantity","precision":"6","read_only":1},
+  {"default":"0","fieldname":"outstanding_stock_quantity","fieldtype":"Float","in_list_view":1,"label":"Outstanding Stock Quantity","precision":"6","read_only":1},
+  {"default":"0","fieldname":"rate","fieldtype":"Currency","in_list_view":1,"label":"Rate / Order UOM","precision":"6","reqd":1},
+  {"default":"0","fieldname":"amount","fieldtype":"Currency","in_list_view":1,"label":"Amount","precision":"4","read_only":1},
+  {"fieldname":"stock_uom_snapshot","fieldtype":"Link","label":"Stock UOM Snapshot","options":"Ledgix UOM","read_only":1},
+  {"default":"0","fieldname":"stock_rate","fieldtype":"Currency","label":"Rate / Stock UOM","precision":"6","read_only":1}
+ ],
+ "grid_page_length":50,
+ "istable":1,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Purchase Order Item",
+ "permissions":[],
+ "row_format":"Dynamic",
+ "rows_threshold_for_grid_search":20,
+ "sort_field":"idx",
+ "sort_order":"ASC",
+ "states":[]
+}
