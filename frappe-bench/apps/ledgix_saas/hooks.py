@@ -51,6 +51,16 @@ update_website_context = [
 	"ledgix_saas.api.brand.update_website_context",
 ]
 
+# Fiscal attributes captured on an open restaurant line are part of the
+# transaction snapshot. Keep the controller focused on operational invariants
+# while this cross-cutting hook locks/recalculates the full FBR/tax snapshot.
+doc_events = {
+	"Ledgix Restaurant Order Item": {
+		"before_insert": "ledgix_saas.services.restaurant_tax_snapshots.before_insert_order_item",
+		"validate": "ledgix_saas.services.restaurant_tax_snapshots.validate_order_item_tax_snapshot",
+	},
+}
+
 # Keep legacy HTTP contracts stable while routing them through the current
 # environment-aware / branch-aware authoritative services.
 override_whitelisted_methods = {
