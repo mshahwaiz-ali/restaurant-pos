@@ -6,7 +6,6 @@
 # ============================================================
 
 import frappe
-from frappe import _
 from frappe.utils import cint, flt
 from ledgix_saas.api.security import require_ledgix_manager_or_above
 
@@ -31,14 +30,10 @@ def get_item_intelligence_report_data(
 	sort_by=None,
 	sort_order="asc",
 	view_mode=None,
+	branch=None,
+	stock_location=None,
 ):
-	"""Adapter for the Inventory Intelligence Script Report.
-
-	The Ledgix Reports page expects paginated rows + dict summary.
-	The Script Report returns raw rows + report_summary list.
-	This wrapper keeps the existing Script Report intact and safely exposes
-	the same full item-cycle data inside the Reports module.
-	"""
+	"""Paginated adapter over the one authoritative Inventory Intelligence report."""
 
 	require_ledgix_manager_or_above()
 
@@ -64,10 +59,12 @@ def get_item_intelligence_report_data(
 		"from_date": from_date,
 		"to_date": to_date,
 		"view_mode": selected_view_mode,
+		"branch": branch,
+		"stock_location": stock_location,
 	})
 
 	execute = get_inventory_intelligence_execute()
-	columns, rows, _message, _chart, report_summary = execute(filters)
+	_columns, rows, _message, _chart, report_summary = execute(filters)
 
 	rows = normalize_item_intelligence_rows(rows or [])
 	rows = apply_item_intelligence_filters(rows, search, status, min_amount, max_amount)
@@ -239,25 +236,34 @@ def report_summary_to_dict(report_summary):
 
 	for item in report_summary or []:
 		label = str(item.get("label") or "").strip().lower()
-		value = item.get("value")
+		value = flt(item.get("value"))
 
 		if label == "purchased qty":
-			summary["purchased_qty"] = flt(value)
-		elif label == "current lot qty":
-			summary["current_lot_qty"] = flt(value)
-		elif label == "sold qty":
-			summary["sold_qty"] = flt(value)
-		elif label == "returned qty":
-			summary["returned_qty"] = flt(value)
+			summary["purchased_qty"] = value
+		elif label in {"current lot qty", "current qty"}:
+			summary["current_lot_qty"] = value
+		elif label in {"sold qty", "sale qty"}:
+			summary["sold_qty"] = value
+		elif label in {"returned qty", "return qty"}:
+			summary["returned_qty"] = value
 		elif label == "selling amount":
-			summary["selling_amount"] = flt(value)
+			summary["selling_amount"] = value
 		elif label == "profit":
-			summary["profit"] = flt(value)
+			summary["profit"] = value
 		elif label == "loss":
-			summary["loss"] = flt(value)
+			summary["loss"] = value
 		elif label == "net sold qty":
-			summary["net_sold_qty"] = flt(value)
+			summary["net_sold_qty"] = value
+		elif label == "net profit":
+			if value >= 0:
+				summary["profit"] = value
+			else:
+				summary["loss"] = abs(value)
 
+	summary["net_sold_qty"] = summary["net_sold_qty"] or max(
+		flt(summary["sold_qty"]) - flt(summary["returned_qty"]),
+		0,
+	)
 	return summary
 
 
