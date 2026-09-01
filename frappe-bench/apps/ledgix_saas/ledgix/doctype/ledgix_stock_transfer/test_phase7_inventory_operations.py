@@ -64,7 +64,6 @@ class TestPhase7InventoryOperations(FrappeTestCase):
 			items=payload,
 			reason="Phase 7 transfer regression",
 			client_transfer_id=client_transfer_id,
-			branch=None,
 			source_branch=self.branch,
 			destination_branch=self.branch,
 		)
