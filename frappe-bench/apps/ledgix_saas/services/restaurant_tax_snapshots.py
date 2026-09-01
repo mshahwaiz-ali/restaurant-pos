@@ -32,6 +32,7 @@ SNAPSHOT_FIELDS = (
 	"sro_schedule_number_snapshot",
 	"sro_item_serial_number_snapshot",
 )
+FIRED_CONTEXT_FIELDS = ("seat_no", "course", "is_course_held", "item_note")
 
 
 def _format_tax_rate(rate):
@@ -108,7 +109,7 @@ def build_item_fiscal_context(item, posting_date=None):
 		"sales_type_snapshot": (mapping.get("sales_type") if mapping else None) or ctx.get("sales_type"),
 		"scenario_id_snapshot": (mapping.get("scenario_id") if mapping else None) or ctx.get("scenario_id"),
 		"sro_schedule_number_snapshot": (mapping.get("sro_schedule_number") if mapping else None) or ctx.get("sro_schedule_number"),
-		"sro_item_serial_number_snapshot": (mapping.get("sro_item_serial_number") if mapping else None) or ctx.get("sro_item_serial_number"),
+		" sro_item_serial_number_snapshot".strip(): (mapping.get("sro_item_serial_number") if mapping else None) or ctx.get("sro_item_serial_number"),
 	}
 
 
@@ -180,6 +181,12 @@ def validate_order_item_tax_snapshot(doc, method=None):
 				"Restaurant Order Item fiscal snapshots are immutable after creation.",
 				frappe.PermissionError,
 			)
+		if flt(before.get("fired_quantity"), 6) > 0:
+			context_changed = [field for field in FIRED_CONTEXT_FIELDS if before.get(field) != doc.get(field)]
+			if context_changed:
+				frappe.throw(
+					"Seat, course, hold state and kitchen note are locked after the item is fired. Void/re-add the item for a kitchen-visible change."
+				)
 	if not cint(doc.get("tax_snapshot_locked")):
 		capture_restaurant_item_tax_snapshot(doc)
 	recalculate_restaurant_item_tax(doc)
