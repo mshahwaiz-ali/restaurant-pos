@@ -20,7 +20,7 @@ class LedgixPurchase(Document):
         self.apply_operating_context()
         self.calculate_totals()
 
-        from ledgix_saas.api.stock_identity import normalize_purchase_serials, validate_purchase_serial_numbers
+        from ledgix_saas.api.stock_identity_location import normalize_purchase_serials, validate_purchase_serial_numbers
         normalize_purchase_serials(self)
         validate_purchase_serial_numbers(self)
 
@@ -38,7 +38,7 @@ class LedgixPurchase(Document):
         self.db_set("status", "Submitted", update_modified=False)
         post_purchase_movements(self)
 
-        from ledgix_saas.api.stock_identity import create_stock_lots_for_purchase, create_stock_serials_for_purchase
+        from ledgix_saas.api.stock_identity_location import create_stock_lots_for_purchase, create_stock_serials_for_purchase
         create_stock_lots_for_purchase(self)
         create_stock_serials_for_purchase(self)
 
@@ -46,12 +46,10 @@ class LedgixPurchase(Document):
         self.status = "Cancelled"
         self.db_set("status", "Cancelled", update_modified=False)
 
-        from ledgix_saas.api.stock_identity import reverse_purchase_lots, reverse_purchase_serials
+        from ledgix_saas.api.stock_identity_location import reverse_purchase_lots, reverse_purchase_serials
         reverse_purchase_lots(self)
         reverse_purchase_serials(self)
 
-        # Cancelling each submitted Stock Movement reverses quantity and rebuilds
-        # moving-average valuation from the remaining movement ledger.
         cancel_reference_movements("Ledgix Purchase", self.name)
 
     def calculate_totals(self):
@@ -66,13 +64,11 @@ class LedgixPurchase(Document):
         self.total_profit = total_profit
 
     def create_stock_movements(self):
-        # Compatibility wrapper for existing callers; authority lives in services.stock.
         post_purchase_movements(self)
 
     def cancel_stock_movements(self):
         cancel_reference_movements("Ledgix Purchase", self.name)
 
     def recalculate_item_average_costs(self):
-        """Compatibility wrapper around the authoritative stock-ledger replay."""
         for item_name in sorted({row.item for row in self.items if row.item}):
             rebuild_item_average_cost(item_name)
