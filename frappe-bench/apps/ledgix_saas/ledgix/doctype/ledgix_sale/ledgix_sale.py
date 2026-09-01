@@ -38,13 +38,11 @@ class LedgixSale(Document):
         self.validate_payments()
         self.validate_credit()
 
-        from ledgix_saas.api.stock_identity import normalize_sale_serials, validate_sale_serial_numbers
+        from ledgix_saas.api.stock_identity_location import normalize_sale_serials, validate_sale_serial_numbers
         normalize_sale_serials(self)
         validate_sale_serial_numbers(self)
 
     def before_submit(self):
-        # Freeze legal seller and customer-facing item identity at the final posting
-        # boundary so later master-data edits cannot change historical reprints.
         apply_seller_snapshot(self)
         apply_item_snapshots(self)
 
@@ -82,8 +80,6 @@ class LedgixSale(Document):
         )
 
     def validate_pos_shift(self):
-        # Retail checkout is shift-bound. B2B back-office invoices may be created
-        # without a register shift, while a B2B sale created from POS may still carry one.
         if self.sale_channel == "B2B" and not self.pos_shift:
             return
 
@@ -104,7 +100,7 @@ class LedgixSale(Document):
 
         post_sale_movements(self)
 
-        from ledgix_saas.api.stock_identity import allocate_sale_fifo, allocate_sale_serials
+        from ledgix_saas.api.stock_identity_location import allocate_sale_fifo, allocate_sale_serials
         allocate_sale_fifo(self)
         allocate_sale_serials(self)
 
@@ -136,7 +132,7 @@ class LedgixSale(Document):
         self.status = "Cancelled"
         self.db_set("status", "Cancelled", update_modified=False)
 
-        from ledgix_saas.api.stock_identity import reverse_sale_fifo_allocations, reverse_sale_serial_allocations
+        from ledgix_saas.api.stock_identity_location import reverse_sale_fifo_allocations, reverse_sale_serial_allocations
         reverse_sale_fifo_allocations(self)
         reverse_sale_serial_allocations(self)
         cancel_reference_movements("Ledgix Sale", self.name)
@@ -270,7 +266,6 @@ class LedgixSale(Document):
             )
 
     def post_legacy_tenders_to_payment_ledger(self):
-        """Bridge finalized POS tender snapshots into the authoritative Payment ledger."""
         if not self.payments or not frappe.db.exists("DocType", "Ledgix Payment"):
             return
 
