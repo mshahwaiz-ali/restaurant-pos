@@ -1,0 +1,37 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:assignment_key",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["assignment_section","branch","menu","assignment_column","price_list_override","priority","is_active","assignment_key"],
+ "fields": [
+  {"fieldname":"assignment_section","fieldtype":"Section Break","label":"Branch Menu Assignment"},
+  {"fieldname":"branch","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Branch","options":"Ledgix Branch","reqd":1},
+  {"fieldname":"menu","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Menu","options":"Ledgix Menu","reqd":1},
+  {"fieldname":"assignment_column","fieldtype":"Column Break"},
+  {"description":"Optional branch-specific selling price list. Falls back to Menu then Branch defaults.","fieldname":"price_list_override","fieldtype":"Link","label":"Price List Override","options":"Ledgix Price List"},
+  {"default":"10","description":"Lower number wins when multiple active menus match the same channel/daypart.","fieldname":"priority","fieldtype":"Int","in_list_view":1,"label":"Priority"},
+  {"default":"1","fieldname":"is_active","fieldtype":"Check","in_list_view":1,"label":"Active"},
+  {"fieldname":"assignment_key","fieldtype":"Data","hidden":1,"label":"Assignment Key","read_only":1,"unique":1}
+ ],
+ "grid_page_length":50,
+ "index_web_pages_for_search":1,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Branch Menu",
+ "naming_rule":"By fieldname",
+ "permissions":[
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"System Manager","share":1,"write":1},
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Admin","share":1,"write":1},
+  {"create":1,"delete":0,"email":0,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Manager","share":0,"write":1},
+  {"create":0,"delete":0,"email":0,"export":0,"print":0,"read":1,"report":0,"role":"Ledgix Cashier","share":0,"write":0}
+ ],
+ "row_format":"Dynamic",
+ "rows_threshold_for_grid_search":20,
+ "search_fields":"branch,menu",
+ "sort_field":"priority",
+ "sort_order":"ASC",
+ "states":[],
+ "track_changes":1
+}
