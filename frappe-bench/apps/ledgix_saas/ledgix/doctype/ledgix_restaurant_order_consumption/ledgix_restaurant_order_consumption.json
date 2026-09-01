@@ -1,0 +1,34 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:snapshot_key",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["snapshot_section","restaurant_order_item","ingredient_item","stock_uom","quantity_per_unit","cost_rate","line_cost_per_unit","snapshot_key"],
+ "fields": [
+  {"fieldname":"snapshot_section","fieldtype":"Section Break","label":"Order Ingredient Snapshot"},
+  {"fieldname":"restaurant_order_item","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Restaurant Order Item","options":"Ledgix Restaurant Order Item","read_only":1,"reqd":1},
+  {"fieldname":"ingredient_item","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Ingredient","options":"Ledgix Item","read_only":1,"reqd":1},
+  {"fieldname":"stock_uom","fieldtype":"Link","label":"Stock UOM","options":"Ledgix UOM","read_only":1},
+  {"fieldname":"quantity_per_unit","fieldtype":"Float","in_list_view":1,"label":"Quantity / Ordered Unit","precision":"6","read_only":1,"reqd":1},
+  {"fieldname":"cost_rate","fieldtype":"Currency","label":"Cost Rate Snapshot","precision":"6","read_only":1},
+  {"fieldname":"line_cost_per_unit","fieldtype":"Currency","label":"Cost / Ordered Unit","precision":"4","read_only":1},
+  {"fieldname":"snapshot_key","fieldtype":"Data","hidden":1,"label":"Snapshot Key","read_only":1,"unique":1}
+ ],
+ "grid_page_length":50,
+ "index_web_pages_for_search":1,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Restaurant Order Consumption",
+ "naming_rule":"By fieldname",
+ "permissions":[
+  {"export":1,"print":1,"read":1,"report":1,"role":"System Manager"},
+  {"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Admin"},
+  {"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Manager"}
+ ],
+ "search_fields":"restaurant_order_item,ingredient_item",
+ "sort_field":"creation",
+ "sort_order":"ASC",
+ "states":[],
+ "track_changes":0
+}
