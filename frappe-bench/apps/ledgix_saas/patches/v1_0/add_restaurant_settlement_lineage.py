@@ -5,6 +5,34 @@ from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 
 CUSTOM_FIELDS = {
+	"Ledgix Branch": [
+		{
+			"fieldname": "fiscal_charges_section",
+			"label": "Restaurant Fiscal Charges",
+			"fieldtype": "Section Break",
+			"insert_after": "default_stock_location",
+			"collapsible": 1,
+			"module": "Ledgix",
+		},
+		{
+			"fieldname": "service_charge_item",
+			"label": "Service Charge Item",
+			"fieldtype": "Link",
+			"options": "Ledgix Item",
+			"insert_after": "fiscal_charges_section",
+			"description": "Non-stock Ledgix Item whose tax/FBR classification is used for restaurant service charges.",
+			"module": "Ledgix",
+		},
+		{
+			"fieldname": "tip_item",
+			"label": "Tip / Gratuity Item",
+			"fieldtype": "Link",
+			"options": "Ledgix Item",
+			"insert_after": "service_charge_item",
+			"description": "Non-stock Ledgix Item whose tax/FBR classification is used for tips/gratuity.",
+			"module": "Ledgix",
+		},
+	],
 	"Ledgix Sale": [
 		{
 			"fieldname": "restaurant_order",
@@ -95,6 +123,23 @@ CUSTOM_FIELDS = {
 			"fieldtype": "Link",
 			"options": "Ledgix Restaurant Order Item",
 			"insert_after": "item",
+			"read_only": 1,
+			"module": "Ledgix",
+		},
+		{
+			"fieldname": "restaurant_order_charge",
+			"label": "Restaurant Order Charge",
+			"fieldtype": "Link",
+			"options": "Ledgix Restaurant Order Charge",
+			"insert_after": "restaurant_order_item",
+			"read_only": 1,
+			"module": "Ledgix",
+		},
+		{
+			"fieldname": "restaurant_charge_type",
+			"label": "Restaurant Charge Type",
+			"fieldtype": "Data",
+			"insert_after": "restaurant_order_charge",
 			"read_only": 1,
 			"module": "Ledgix",
 		},
