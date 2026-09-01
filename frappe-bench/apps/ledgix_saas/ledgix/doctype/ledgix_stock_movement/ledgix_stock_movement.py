@@ -115,8 +115,11 @@ class LedgixStockMovement(Document):
                 new_location_stock = location_stock - quantity
                 new_aggregate_stock = aggregate_stock - quantity
             elif self.movement_type == "ADJUSTMENT":
-                if frappe.get_meta("Ledgix Stock Movement").has_field("previous_quantity"):
-                    self.db_set("previous_quantity", location_stock, update_modified=False)
+                movement_meta = frappe.get_meta("Ledgix Stock Movement")
+                if movement_meta.has_field("previous_quantity"):
+                    self.db_set("previous_quantity", str(flt(location_stock, 6)), update_modified=False)
+                if movement_meta.has_field("previous_quantity_is_snapshot"):
+                    self.db_set("previous_quantity_is_snapshot", 1, update_modified=False)
                 new_location_stock = quantity
                 new_aggregate_stock = aggregate_stock + (quantity - location_stock)
                 if self.valuation_rate is not None:
