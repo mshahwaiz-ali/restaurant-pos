@@ -10,12 +10,12 @@ from ledgix_saas.services.uom import to_stock_qty
 
 
 def build_locked_order_consumption(item, *, recipe=None, modifier_rows=None):
-	"""Build the per-unit ingredient plan that becomes part of an order-item snapshot.
+	"""Build the per-unit stock plan that becomes part of an order-item snapshot.
 
-	This runs at Restaurant Order Item creation time. Modifier effects are read
-	from the already-snapshotted order modifier rows, not from mutable modifier
-	masters. The resulting rows are persisted and KOT fire consumes only those
-	persisted rows.
+	Recipe-backed menu items consume their locked ingredients. A restaurant item
+	without a recipe but with inventory tracking (for example a bottled drink)
+	consumes itself one-for-one at kitchen fire. Non-stock items create no stock
+	movement. Modifier effects are read from already-snapshotted order rows.
 	"""
 	snapshot = build_recipe_snapshot(item=item, recipe=recipe) if recipe else None
 	yield_quantity = flt(snapshot.get("yield_quantity")) if snapshot else 1.0
@@ -36,14 +36,25 @@ def build_locked_order_consumption(item, *, recipe=None, modifier_rows=None):
 			consumption[linked_item] += stock_qty * selection_quantity
 			cost_rates[linked_item] = flt(frappe.db.get_value("Ledgix Item", linked_item, "cost_price"))
 
-	for ingredient in (snapshot or {}).get("ingredients", []):
-		if not cint(ingredient.get("consume_stock")):
-			continue
-		ingredient_item = ingredient.get("ingredient_item")
-		if ingredient_item in excluded:
-			continue
-		consumption[ingredient_item] += flt(ingredient.get("consumption_quantity")) / yield_quantity
-		cost_rates[ingredient_item] = flt(ingredient.get("cost_price"))
+	if snapshot:
+		for ingredient in snapshot.get("ingredients", []):
+			if not cint(ingredient.get("consume_stock")):
+				continue
+			ingredient_item = ingredient.get("ingredient_item")
+			if ingredient_item in excluded:
+				continue
+			consumption[ingredient_item] += flt(ingredient.get("consumption_quantity")) / yield_quantity
+			cost_rates[ingredient_item] = flt(ingredient.get("cost_price"))
+	else:
+		item_meta = frappe.db.get_value(
+			"Ledgix Item",
+			item,
+			["track_inventory", "stock_uom", "cost_price"],
+			as_dict=True,
+		)
+		if item_meta and cint(item_meta.track_inventory):
+			consumption[item] += 1.0
+			cost_rates[item] = flt(item_meta.cost_price)
 
 	rows = []
 	for ingredient_item in sorted(consumption):
@@ -86,9 +97,8 @@ def persist_order_consumption_snapshot(order_item):
 	if frappe.db.exists("Ledgix Restaurant Order Consumption", {"restaurant_order_item": order_item.name}):
 		return
 
-	# A quantity-split clone inherits the original line's historical ingredient
-	# truth verbatim. Never reinterpret a split line using today's recipe or
-	# modifier masters.
+	# A quantity-split clone inherits the original line's historical stock truth
+	# verbatim. Never reinterpret a split line using today's recipe/modifier master.
 	rows = _copy_origin_snapshot(order_item.origin_order_item)
 	if not rows:
 		rows = build_locked_order_consumption(
@@ -105,3 +115,18 @@ def persist_order_consumption_snapshot(order_item):
 		})
 		doc.flags.from_restaurant_order_service = True
 		doc.insert(ignore_permissions=True)
+
+	# Persisted consumption rows are the authoritative historical cost basis. This
+	# gives direct-stock items a cost snapshot and includes modifier-linked stock.
+	cost_per_unit = flt(sum(flt(row["line_cost_per_unit"]) for row in rows), 4)
+	billable_quantity = flt(order_item.billable_quantity, 6)
+	frappe.db.set_value(
+		"Ledgix Restaurant Order Item",
+		order_item.name,
+		{
+			"recipe_cost_per_unit": cost_per_unit,
+			"estimated_cost": flt(cost_per_unit * billable_quantity, 4),
+			"estimated_profit": flt(flt(order_item.amount) - (cost_per_unit * billable_quantity), 4),
+		},
+		update_modified=False,
+	)
