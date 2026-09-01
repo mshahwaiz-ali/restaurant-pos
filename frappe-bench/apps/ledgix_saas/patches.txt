@@ -14,3 +14,4 @@ ledgix_saas.patches.v1_0.bootstrap_restaurant_foundation
 ledgix_saas.patches.v1_0.enable_location_aware_inventory
 ledgix_saas.patches.v1_0.add_stock_adjustment_snapshot
 ledgix_saas.patches.v1_0.add_branch_context_to_pos_holds
+ledgix_saas.patches.v1_0.add_restaurant_scope_indexes
