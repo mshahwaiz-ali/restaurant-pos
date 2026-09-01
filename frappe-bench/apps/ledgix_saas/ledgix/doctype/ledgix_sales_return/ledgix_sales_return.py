@@ -15,6 +15,7 @@ class LedgixSalesReturn(Document):
         self.validate_return_reason()
         self.ensure_return_date()
         self.apply_original_sale_context()
+        self.validate_operating_context()
         self.resolve_original_sale_item_rows()
         self.validate_return_quantities()
         self.enforce_original_sale_item_financials()
@@ -57,8 +58,6 @@ class LedgixSalesReturn(Document):
         self.fbr_reason_remarks = str(getattr(self, "fbr_reason_remarks", "") or "").strip()
 
     def ensure_return_date(self):
-        # Freeze a business document date instead of generating the FBR note date at
-        # network-call time. Historical submissions/retries must keep the same date.
         if not getattr(self, "return_date", None):
             self.return_date = nowdate()
 
@@ -70,14 +69,31 @@ class LedgixSalesReturn(Document):
         if original_sale.docstatus != 1:
             frappe.throw("Sales Return requires a submitted original sale.")
         self.customer = original_sale.customer
+        if frappe.get_meta("Ledgix Sales Return").has_field("branch"):
+            self.branch = getattr(original_sale, "branch", None)
+        if frappe.get_meta("Ledgix Sales Return").has_field("stock_location"):
+            self.stock_location = getattr(original_sale, "stock_location", None)
+
+    def validate_operating_context(self):
+        if not self.original_sale:
+            return
+        from ledgix_saas.services.organization import resolve_branch_location
+
+        original = frappe.db.get_value(
+            "Ledgix Sale",
+            self.original_sale,
+            ["branch", "stock_location"],
+            as_dict=True,
+        )
+        if not original:
+            return
+        self.branch, self.stock_location = resolve_branch_location(
+            original.branch,
+            original.stock_location,
+            purpose="receiving",
+        )
 
     def resolve_original_sale_item_rows(self):
-        """Resolve a return row to an original sale row on the server.
-
-        Older UI flows only sent an item code. That is safe when the item appears once
-        on the sale. If the same item appears on multiple sale rows, the caller must
-        provide original_sale_item_row so tax/price/cost snapshots cannot be guessed.
-        """
         if not self.original_sale:
             return
         original_sale = frappe.get_doc("Ledgix Sale", self.original_sale)
