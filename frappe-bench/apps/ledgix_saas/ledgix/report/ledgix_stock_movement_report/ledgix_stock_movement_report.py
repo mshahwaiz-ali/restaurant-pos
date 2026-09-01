@@ -80,6 +80,7 @@ def get_data(filters):
 			sm.movement_type,
 			sm.movement_source,
 			IFNULL(sm.quantity, 0) AS quantity,
+			IFNULL(sm.previous_quantity, 0) AS previous_quantity,
 			IFNULL(sm.valuation_rate, 0) AS valuation_rate,
 			sm.reference_doctype,
 			sm.reference_name,
@@ -138,13 +139,11 @@ def get_report_summary(data):
 	total_movements = len(data)
 	in_qty = sum(row.get("quantity") or 0 for row in data if row.get("movement_type") == "IN")
 	out_qty = sum(row.get("quantity") or 0 for row in data if row.get("movement_type") == "OUT")
-	adjustment_delta = 0
-	for row in data:
-		if row.get("movement_type") != "ADJUSTMENT":
-			continue
-		movement = row.get("movement")
-		previous = frappe.db.get_value("Ledgix Stock Movement", movement, "previous_quantity")
-		adjustment_delta += (row.get("quantity") or 0) - (previous or 0)
+	adjustment_delta = sum(
+		(row.get("quantity") or 0) - (row.get("previous_quantity") or 0)
+		for row in data
+		if row.get("movement_type") == "ADJUSTMENT"
+	)
 
 	return [
 		{"value": total_movements, "label": "Movements", "datatype": "Int"},
