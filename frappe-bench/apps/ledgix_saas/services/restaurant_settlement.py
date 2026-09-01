@@ -5,6 +5,7 @@ from frappe.utils import cint, flt, now_datetime, today
 
 from ledgix_saas.services.organization import ensure_branch_access
 from ledgix_saas.services.restaurant_audit import log_restaurant_operation
+from ledgix_saas.services.restaurant_charges import build_charge_fiscal_rows
 from ledgix_saas.services.restaurant_fiscal import build_discounted_fiscal_rows
 from ledgix_saas.services.restaurant_orders import close_table_session, get_order_payload
 
@@ -74,53 +75,59 @@ def _validate_fire_complete(fiscal):
 			frappe.throw(f"Restaurant Order Item {row['restaurant_order_item']} must be fully fired before settlement.")
 
 
-def _normalize_adjustments(order, discount_amount=None, service_charge=None, tip_amount=None):
+def _normalize_adjustments(order, discount_amount=None, service_charge=None, tip_amount=None, *, persist_charges=False):
+	discount = flt(order.discount_amount if discount_amount is None else discount_amount, 2)
+	service = flt(order.service_charge if service_charge is None else service_charge, 2)
+	tip = flt(order.tip_amount if tip_amount is None else tip_amount, 2)
+	if min(discount, service, tip) < 0:
+		frappe.throw("Discount, Service Charge and Tip cannot be negative.")
+	item_fiscal = build_discounted_fiscal_rows(order.name, discount)
+	charge_fiscal = build_charge_fiscal_rows(
+		order,
+		service_charge=service,
+		tip_amount=tip,
+		persist=persist_charges,
+	)
+	return discount, service, tip, item_fiscal, charge_fiscal
+
+
+def _apply_adjustments(order, *, discount_amount=None, service_charge=None, tip_amount=None, reason=None, request_id=None):
 	discount = flt(order.discount_amount if discount_amount is None else discount_amount, 2)
 	service = flt(order.service_charge if service_charge is None else service_charge, 2)
 	tip = flt(order.tip_amount if tip_amount is None else tip_amount, 2)
 	if min(discount, service, tip) < 0:
 		frappe.throw("Discount, Service Charge and Tip cannot be negative.")
 
-	# Fail closed until these charges have explicit configured Ledgix Item/FBR
-	# mappings. Never create an unclassified amount that cannot reconcile to FBR.
-	if service or tip:
-		frappe.throw(
-			"Service Charge / Tip are not enabled until their fiscal charge-item mapping is configured."
-		)
-
-	fiscal = build_discounted_fiscal_rows(order.name, discount)
-	return discount, service, tip, fiscal
-
-
-def _apply_adjustments(order, *, discount_amount=None, service_charge=None, tip_amount=None, reason=None, request_id=None):
-	discount, service, tip, fiscal = _normalize_adjustments(
-		order,
-		discount_amount=discount_amount,
-		service_charge=service_charge,
-		tip_amount=tip_amount,
-	)
 	privileged_change = (
 		abs(discount - flt(order.discount_amount)) > 0.005
 		or abs(service - flt(order.service_charge)) > 0.005
 	)
 	if privileged_change and not _is_manager():
-		frappe.throw("Discount or manual Service Charge changes require Manager or Admin access.", frappe.PermissionError)
+		frappe.throw("Discount or Service Charge changes require Manager or Admin access.", frappe.PermissionError)
 	if privileged_change and not str(reason or "").strip():
 		frappe.throw("Reason is required when Discount or Service Charge changes.")
 
-	new_grand_total = flt(fiscal["net_total"] + service + tip, 2)
+	discount, service, tip, item_fiscal, charge_fiscal = _normalize_adjustments(
+		order,
+		discount_amount=discount,
+		service_charge=service,
+		tip_amount=tip,
+		persist_charges=True,
+	)
+	new_tax = flt(item_fiscal["tax_amount"] + charge_fiscal["tax_amount"], 2)
+	new_grand_total = flt(item_fiscal["net_total"] + charge_fiscal["net_total"], 2)
 	changed = any(
 		abs(new - old) > 0.005
 		for new, old in (
 			(discount, flt(order.discount_amount)),
 			(service, flt(order.service_charge)),
 			(tip, flt(order.tip_amount)),
-			(flt(fiscal["tax_amount"]), flt(order.tax_amount)),
+			(new_tax, flt(order.tax_amount)),
 			(new_grand_total, flt(order.grand_total)),
 		)
 	)
 	if not changed:
-		return order, fiscal
+		return order, item_fiscal, charge_fiscal
 
 	before = {
 		"discount_amount": flt(order.discount_amount, 2),
@@ -132,7 +139,7 @@ def _apply_adjustments(order, *, discount_amount=None, service_charge=None, tip_
 	order.discount_amount = discount
 	order.service_charge = service
 	order.tip_amount = tip
-	order.tax_amount = flt(fiscal["tax_amount"], 2)
+	order.tax_amount = new_tax
 	order.grand_total = new_grand_total
 	order.flags.allow_restaurant_adjustment = True
 	order.save(ignore_permissions=True)
@@ -149,12 +156,12 @@ def _apply_adjustments(order, *, discount_amount=None, service_charge=None, tip_
 				"discount_amount": discount,
 				"service_charge": service,
 				"tip_amount": tip,
-				"tax_amount": flt(order.tax_amount, 2),
-				"grand_total": flt(order.grand_total, 2),
+				"tax_amount": new_tax,
+				"grand_total": new_grand_total,
 			},
 		},
 	)
-	return order, fiscal
+	return order, item_fiscal, charge_fiscal
 
 
 def validate_order_adjustment_mutation(doc, method=None):
@@ -183,34 +190,37 @@ def preview_restaurant_settlement(
 	ensure_branch_access(order.branch)
 	if order.status in FINAL_ORDER_STATUSES or order.linked_sale:
 		frappe.throw("Restaurant Order is already finalized.")
-	discount, service, tip, fiscal = _normalize_adjustments(
+	discount, service, tip, item_fiscal, charge_fiscal = _normalize_adjustments(
 		order,
 		discount_amount=discount_amount,
 		service_charge=service_charge,
 		tip_amount=tip_amount,
+		persist_charges=False,
 	)
-	_validate_fire_complete(fiscal)
+	_validate_fire_complete(item_fiscal)
 	if (
 		abs(discount - flt(order.discount_amount)) > 0.005
 		or abs(service - flt(order.service_charge)) > 0.005
 	) and not _is_manager():
-		frappe.throw("Discount or manual Service Charge changes require Manager or Admin access.", frappe.PermissionError)
+		frappe.throw("Discount or Service Charge changes require Manager or Admin access.", frappe.PermissionError)
 	return {
 		"order": get_order_payload(order.name),
-		"subtotal_before_discount": flt(fiscal["gross_total"], 2),
+		"subtotal_before_discount": flt(item_fiscal["gross_total"], 2),
 		"discount_amount": discount,
-		"total_after_discount": flt(fiscal["total_amount"], 2),
-		"tax_amount": flt(fiscal["tax_amount"], 2),
+		"total_after_discount": flt(item_fiscal["total_amount"], 2),
+		"tax_amount": flt(item_fiscal["tax_amount"] + charge_fiscal["tax_amount"], 2),
 		"service_charge": service,
 		"tip_amount": tip,
-		"grand_total": flt(fiscal["net_total"] + service + tip, 2),
+		"charge_tax_amount": flt(charge_fiscal["tax_amount"], 2),
+		"grand_total": flt(item_fiscal["net_total"] + charge_fiscal["net_total"], 2),
 		"payment_methods": [dict(row) for row in _payment_methods()],
 		"active_shift": _open_shift(order.branch),
 		"can_adjust_discount_or_service": _is_manager(),
+		"charges": charge_fiscal["rows"],
 	}
 
 
-def _build_sale(order, fiscal, tenders, client_sale_id, shift):
+def _build_sale(order, item_fiscal, charge_fiscal, tenders, client_sale_id, shift):
 	sale = frappe.new_doc("Ledgix Sale")
 	sale.customer = _customer(order)
 	sale.sale_channel = "Retail"
@@ -227,7 +237,7 @@ def _build_sale(order, fiscal, tenders, client_sale_id, shift):
 	sale.restaurant_server_snapshot = order.server
 	sale.restaurant_covers_snapshot = cint(order.covers)
 	sale.restaurant_stock_consumed_at_kitchen = 1
-	sale.subtotal_before_discount = flt(fiscal["gross_total"], 2)
+	sale.subtotal_before_discount = flt(item_fiscal["gross_total"] + charge_fiscal["base_amount"], 2)
 	sale.discount_type = "Amount" if flt(order.discount_amount) else ""
 	sale.discount_value = flt(order.discount_amount, 2)
 	sale.discount_amount = flt(order.discount_amount, 2)
@@ -235,7 +245,7 @@ def _build_sale(order, fiscal, tenders, client_sale_id, shift):
 	sale.tip_amount = flt(order.tip_amount, 2)
 	sale.allow_partial_payment = 0
 
-	for row in fiscal["rows"]:
+	for row in item_fiscal["rows"]:
 		sale.append("items", {
 			"item": row["item"],
 			"restaurant_order_item": row["restaurant_order_item"],
@@ -250,6 +260,22 @@ def _build_sale(order, fiscal, tenders, client_sale_id, shift):
 			"rate": flt(row["effective_rate"], 2),
 			"price_override": 0,
 			"cost_price": flt(row["cost_price"], 4),
+		})
+
+	for row in charge_fiscal["rows"]:
+		sale.append("items", {
+			"item": row["item"],
+			"restaurant_order_charge": row["restaurant_order_charge"],
+			"restaurant_charge_type": row["charge_type"],
+			"quantity": 1,
+			"price_list_snapshot": order.price_list,
+			"list_rate": flt(row["amount"], 2),
+			"base_rate_snapshot": flt(row["amount"], 2),
+			"modifier_unit_total_snapshot": 0,
+			"seat_no_snapshot": 0,
+			"rate": flt(row["amount"], 2),
+			"price_override": 0,
+			"cost_price": 0,
 		})
 
 	for tender in _as_rows(tenders):
@@ -322,7 +348,7 @@ def settle_restaurant_order(
 	if order.status in FINAL_ORDER_STATUSES:
 		frappe.throw(f"Restaurant Order {order.status} cannot be settled.")
 
-	order, fiscal = _apply_adjustments(
+	order, item_fiscal, charge_fiscal = _apply_adjustments(
 		order,
 		discount_amount=discount_amount,
 		service_charge=service_charge,
@@ -330,12 +356,12 @@ def settle_restaurant_order(
 		reason=adjustment_reason,
 		request_id=f"{request_id}:adjust" if request_id else None,
 	)
-	_validate_fire_complete(fiscal)
+	_validate_fire_complete(item_fiscal)
 	shift = _open_shift(order.branch)
 	if not shift:
 		frappe.throw("Open a POS Shift for this branch before restaurant settlement.")
 
-	sale = _build_sale(order, fiscal, tenders, client_sale_id, shift)
+	sale = _build_sale(order, item_fiscal, charge_fiscal, tenders, client_sale_id, shift)
 	sale.insert(ignore_permissions=True)
 	sale.submit()
 
