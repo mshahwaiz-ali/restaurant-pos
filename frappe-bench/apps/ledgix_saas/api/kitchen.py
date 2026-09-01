@@ -13,6 +13,14 @@ from ledgix_saas.services.kitchen import (
 )
 
 
+_ALLOWED_KDS_TRANSITIONS = {
+	"New": {"Preparing", "Ready"},
+	"Preparing": {"Ready"},
+	"Ready": {"Bumped"},
+	"Bumped": set(),
+}
+
+
 @frappe.whitelist()
 def fire(restaurant_order, client_fire_id, selections=None, release_held=0, note=None):
 	require_ledgix_cashier_or_above()
@@ -40,6 +48,19 @@ def station_queue(branch, kitchen_station=None, include_ready=1):
 @frappe.whitelist()
 def set_item_status(kot_item, status):
 	require_ledgix_cashier_or_above()
+	row = frappe.db.get_value(
+		"Ledgix KOT Item",
+		kot_item,
+		["status", "action"],
+		as_dict=True,
+	)
+	if not row:
+		frappe.throw("KOT Item was not found.")
+	if row.action != "Add":
+		frappe.throw("Only Add KOT Items use the production-state workflow.")
+	status = str(status or "").strip()
+	if status != row.status and status not in _ALLOWED_KDS_TRANSITIONS.get(row.status, set()):
+		frappe.throw(f"KDS state cannot move from {row.status} to {status}.")
 	return set_kot_item_status(kot_item, status)
 
 
