@@ -1,0 +1,40 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:availability_key",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["availability_section","branch","item","availability_column","status","auto_restore_at","reason","audit_section","updated_by","updated_at","availability_key"],
+ "fields": [
+  {"fieldname":"availability_section","fieldtype":"Section Break","label":"Branch Item Availability"},
+  {"fieldname":"branch","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Branch","options":"Ledgix Branch","reqd":1},
+  {"fieldname":"item","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Item","options":"Ledgix Item","reqd":1},
+  {"fieldname":"availability_column","fieldtype":"Column Break"},
+  {"default":"Available","fieldname":"status","fieldtype":"Select","in_list_view":1,"in_standard_filter":1,"label":"Status","options":"Available\n86d","reqd":1},
+  {"description":"Optional automatic availability time. Until this time an 86d item remains unavailable.","fieldname":"auto_restore_at","fieldtype":"Datetime","label":"Auto Restore At"},
+  {"depends_on":"eval:doc.status=='86d'","fieldname":"reason","fieldtype":"Small Text","label":"Reason"},
+  {"collapsible":1,"fieldname":"audit_section","fieldtype":"Section Break","label":"Availability Audit"},
+  {"fieldname":"updated_by","fieldtype":"Link","label":"Updated By","options":"User","read_only":1},
+  {"fieldname":"updated_at","fieldtype":"Datetime","label":"Updated At","read_only":1},
+  {"fieldname":"availability_key","fieldtype":"Data","hidden":1,"label":"Availability Key","read_only":1,"unique":1}
+ ],
+ "grid_page_length":50,
+ "index_web_pages_for_search":1,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Item Availability",
+ "naming_rule":"By fieldname",
+ "permissions":[
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"System Manager","share":1,"write":1},
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Admin","share":1,"write":1},
+  {"create":1,"delete":0,"email":0,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Manager","share":0,"write":1},
+  {"create":0,"delete":0,"email":0,"export":0,"print":0,"read":1,"report":0,"role":"Ledgix Cashier","share":0,"write":0}
+ ],
+ "row_format":"Dynamic",
+ "rows_threshold_for_grid_search":20,
+ "search_fields":"branch,item,status",
+ "sort_field":"modified",
+ "sort_order":"DESC",
+ "states":[],
+ "track_changes":1
+}
