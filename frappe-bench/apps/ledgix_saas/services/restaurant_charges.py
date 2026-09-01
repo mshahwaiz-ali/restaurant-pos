@@ -41,6 +41,8 @@ def _configured_item(order, charge_type):
 
 def _validate_fbr_classification(context, charge_type):
 	settings = get_fbr_settings_internal() or {}
+	if not cint(settings.get("enabled")):
+		return
 	mode = settings.get("mode") or "Disabled"
 	if mode not in {"Sandbox", "Production"}:
 		return
