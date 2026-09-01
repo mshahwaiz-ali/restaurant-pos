@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from frappe.utils import flt
 
 from ledgix.doctype.v2_test_utils import configure_v2_test_environment, make_item
 from ledgix_saas.api.restaurant_inventory import record_stock_count
@@ -34,13 +35,14 @@ class TestLedgixStockCount(FrappeTestCase):
 		)
 
 	def _count(self, item, counted_quantity, client_count_id=None):
+		uom = frappe.db.get_value("Ledgix Item", item.name, "stock_uom") or "Piece"
 		return record_stock_count(
 			stock_location=self.stock_location,
 			branch=self.branch,
 			items=[{
 				"item": item.name,
 				"counted_quantity": counted_quantity,
-				"uom": item.stock_uom or "Piece",
+				"uom": uom,
 			}],
 			client_count_id=client_count_id or f"TEST-COUNT-{uuid4().hex[:12]}",
 			count_type="Cycle Count",
@@ -74,12 +76,13 @@ class TestLedgixStockCount(FrappeTestCase):
 				"movement_type": "ADJUSTMENT",
 				"docstatus": 1,
 			},
-			["name", "quantity", "previous_quantity", "movement_source"],
+			["name", "quantity", "previous_quantity", "previous_quantity_is_snapshot", "movement_source"],
 			as_dict=True,
 		)
 		self.assertTrue(movement)
 		self.assertAlmostEqual(movement.quantity, 7, places=6)
-		self.assertAlmostEqual(movement.previous_quantity, 10, places=6)
+		self.assertAlmostEqual(flt(movement.previous_quantity), 10, places=6)
+		self.assertEqual(int(movement.previous_quantity_is_snapshot or 0), 1)
 		self.assertEqual(movement.movement_source, "Stock Count")
 
 	def test_physical_count_can_adjust_location_to_zero(self):
@@ -96,12 +99,13 @@ class TestLedgixStockCount(FrappeTestCase):
 		movement = frappe.db.get_value(
 			"Ledgix Stock Movement",
 			{"reference_doctype": "Ledgix Stock Count", "reference_name": result["name"], "item": item.name},
-			["quantity", "previous_quantity", "docstatus"],
+			["quantity", "previous_quantity", "previous_quantity_is_snapshot", "docstatus"],
 			as_dict=True,
 		)
 		self.assertEqual(movement.docstatus, 1)
 		self.assertAlmostEqual(movement.quantity, 0, places=6)
-		self.assertAlmostEqual(movement.previous_quantity, 4, places=6)
+		self.assertAlmostEqual(flt(movement.previous_quantity), 4, places=6)
+		self.assertEqual(int(movement.previous_quantity_is_snapshot or 0), 1)
 
 	def test_stock_count_api_is_idempotent(self):
 		item = make_item(cost_price=15, opening_stock=0)
