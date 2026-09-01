@@ -1,0 +1,27 @@
+{
+ "actions": [],
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["item","quantity","uom","stock_quantity","valuation_rate","stock_value","tracking_type_snapshot"],
+ "fields": [
+  {"fieldname":"item","fieldtype":"Link","in_list_view":1,"label":"Item","options":"Ledgix Item","reqd":1},
+  {"default":"1","fieldname":"quantity","fieldtype":"Float","in_list_view":1,"label":"Quantity","precision":"6","reqd":1},
+  {"fieldname":"uom","fieldtype":"Link","in_list_view":1,"label":"UOM","options":"Ledgix UOM","reqd":1},
+  {"default":"0","fieldname":"stock_quantity","fieldtype":"Float","in_list_view":1,"label":"Stock Quantity","precision":"6","read_only":1},
+  {"default":"0","fieldname":"valuation_rate","fieldtype":"Currency","label":"Valuation Rate","precision":"6","read_only":1},
+  {"default":"0","fieldname":"stock_value","fieldtype":"Currency","label":"Stock Value","precision":"4","read_only":1},
+  {"fieldname":"tracking_type_snapshot","fieldtype":"Data","label":"Tracking Type Snapshot","read_only":1}
+ ],
+ "grid_page_length":50,
+ "istable":1,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Stock Transfer Item",
+ "permissions":[],
+ "row_format":"Dynamic",
+ "rows_threshold_for_grid_search":20,
+ "sort_field":"idx",
+ "sort_order":"ASC",
+ "states":[]
+}
