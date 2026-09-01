@@ -1,0 +1,43 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:consumption_key",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["consumption_section","kot_item","restaurant_order_item","branch","stock_location","ingredient_item","stock_uom","stock_quantity","cost_rate","line_cost","consumption_key","posting_section","status","out_movement","reversal_movement","posted_at","reversed_at"],
+ "fields": [
+  {"fieldname":"consumption_section","fieldtype":"Section Break","label":"Kitchen Consumption Snapshot"},
+  {"fieldname":"kot_item","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"KOT Item","options":"Ledgix KOT Item","read_only":1,"reqd":1},
+  {"fieldname":"restaurant_order_item","fieldtype":"Link","in_standard_filter":1,"label":"Restaurant Order Item","options":"Ledgix Restaurant Order Item","read_only":1,"reqd":1},
+  {"fieldname":"branch","fieldtype":"Link","in_standard_filter":1,"label":"Branch","options":"Ledgix Branch","read_only":1,"reqd":1},
+  {"fieldname":"stock_location","fieldtype":"Link","label":"Stock Location","options":"Ledgix Stock Location","read_only":1,"reqd":1},
+  {"fieldname":"ingredient_item","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Ingredient","options":"Ledgix Item","read_only":1,"reqd":1},
+  {"fieldname":"stock_uom","fieldtype":"Link","label":"Stock UOM","options":"Ledgix UOM","read_only":1},
+  {"fieldname":"stock_quantity","fieldtype":"Float","in_list_view":1,"label":"Stock Quantity","precision":"6","read_only":1,"reqd":1},
+  {"fieldname":"cost_rate","fieldtype":"Currency","label":"Cost Rate Snapshot","precision":"6","read_only":1},
+  {"fieldname":"line_cost","fieldtype":"Currency","label":"Line Cost Snapshot","precision":"4","read_only":1},
+  {"fieldname":"consumption_key","fieldtype":"Data","hidden":1,"label":"Consumption Key","read_only":1,"unique":1},
+  {"fieldname":"posting_section","fieldtype":"Section Break","label":"Posting State"},
+  {"default":"Pending","fieldname":"status","fieldtype":"Select","in_list_view":1,"label":"Status","options":"Pending\nPosted\nReversed","read_only":1},
+  {"fieldname":"out_movement","fieldtype":"Link","label":"Consumption Movement","options":"Ledgix Stock Movement","read_only":1},
+  {"fieldname":"reversal_movement","fieldtype":"Link","label":"Reversal Movement","options":"Ledgix Stock Movement","read_only":1},
+  {"fieldname":"posted_at","fieldtype":"Datetime","label":"Posted At","read_only":1},
+  {"fieldname":"reversed_at","fieldtype":"Datetime","label":"Reversed At","read_only":1}
+ ],
+ "grid_page_length":50,
+ "index_web_pages_for_search":1,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix KOT Consumption",
+ "naming_rule":"By fieldname",
+ "permissions":[
+  {"export":1,"print":1,"read":1,"report":1,"role":"System Manager"},
+  {"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Admin"},
+  {"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Manager"}
+ ],
+ "search_fields":"kot_item,restaurant_order_item,ingredient_item,out_movement,reversal_movement",
+ "sort_field":"creation",
+ "sort_order":"ASC",
+ "states":[],
+ "track_changes":0
+}
