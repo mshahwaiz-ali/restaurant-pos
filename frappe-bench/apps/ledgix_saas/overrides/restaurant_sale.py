@@ -5,13 +5,12 @@ from frappe.utils import flt
 
 from ledgix.doctype.ledgix_sale.ledgix_sale import LedgixSale
 from ledgix_saas.services.receivables import refresh_customer_credit_summary
+from ledgix_saas.services.restaurant_fiscal import build_discounted_fiscal_rows
 from ledgix_saas.services.restaurant_sale_tax import apply_restaurant_sale_tax_snapshot
 from ledgix_saas.services.sales import apply_customer_snapshot, apply_item_snapshots, apply_seller_snapshot
 
 
 class RestaurantAwareLedgixSale(LedgixSale):
-	"""Keep Ledgix Sale as final truth while respecting restaurant kitchen stock."""
-
 	def is_restaurant_settlement(self):
 		return bool(self.get("restaurant_order"))
 
@@ -36,8 +35,6 @@ class RestaurantAwareLedgixSale(LedgixSale):
 		self.validate_payments()
 		self.validate_credit()
 
-		# Restaurant V1 does not accept serial-tracked menu lines. Their identity
-		# allocation must be handled at kitchen fire before such items are enabled.
 		for row in self.items:
 			tracking_type = frappe.db.get_value("Ledgix Item", row.item, "tracking_type")
 			if tracking_type == "Serial Based":
@@ -62,36 +59,32 @@ class RestaurantAwareLedgixSale(LedgixSale):
 		if not self.get("restaurant_stock_consumed_at_kitchen"):
 			frappe.throw("Restaurant Sale must declare kitchen-time stock consumption.")
 
-		active_items = {
-			row.name: row
-			for row in frappe.get_all(
-				"Ledgix Restaurant Order Item",
-				filters={"restaurant_order": order.name, "is_voided": 0},
-				fields=["name", "item", "billable_quantity", "fired_quantity", "line_unit_rate"],
-				limit_page_length=0,
-			)
-			if flt(row.billable_quantity) > 0
-		}
+		fiscal = build_discounted_fiscal_rows(order.name, flt(self.discount_amount))
+		expected = {row["restaurant_order_item"]: row for row in fiscal["rows"]}
 		seen = set()
 		for row in self.items:
 			order_item_name = row.get("restaurant_order_item")
 			if not order_item_name or order_item_name in seen:
 				frappe.throw("Every Restaurant Sale line requires one unique Restaurant Order Item reference.")
 			seen.add(order_item_name)
-			order_item = active_items.get(order_item_name)
-			if not order_item:
+			item = expected.get(order_item_name)
+			if not item:
 				frappe.throw(f"Restaurant Order Item {order_item_name} is not billable on {order.name}.")
-			if order_item.item != row.item:
-				frappe.throw(f"Sale item does not match Restaurant Order Item {order_item.name}.")
-			if abs(flt(order_item.billable_quantity) - flt(row.quantity)) > 0.000001:
-				frappe.throw(f"Sale quantity does not match Restaurant Order Item {order_item.name}.")
-			if abs(flt(order_item.line_unit_rate) - flt(row.rate)) > 0.01:
-				frappe.throw(f"Sale rate does not match Restaurant Order Item {order_item.name}.")
-			if flt(order_item.fired_quantity) + 0.000001 < flt(order_item.billable_quantity):
-				frappe.throw(f"Restaurant Order Item {order_item.name} must be fully fired before settlement.")
+			if item["item"] != row.item:
+				frappe.throw(f"Sale item does not match Restaurant Order Item {order_item_name}.")
+			if abs(flt(item["qty"]) - flt(row.quantity)) > 0.000001:
+				frappe.throw(f"Sale quantity does not match Restaurant Order Item {order_item_name}.")
+			if abs(flt(item["effective_rate"]) - flt(row.rate)) > 0.01:
+				frappe.throw(f"Sale discounted rate does not match Restaurant Order Item {order_item_name}.")
+			if abs(flt(item["base_rate_snapshot"]) - flt(row.get("base_rate_snapshot"))) > 0.01:
+				frappe.throw(f"Sale base-rate snapshot does not match Restaurant Order Item {order_item_name}.")
+			if abs(flt(item["modifier_unit_total_snapshot"]) - flt(row.get("modifier_unit_total_snapshot"))) > 0.01:
+				frappe.throw(f"Sale modifier snapshot does not match Restaurant Order Item {order_item_name}.")
+			if flt(item["fired_quantity"]) + 0.000001 < flt(item["qty"]):
+				frappe.throw(f"Restaurant Order Item {order_item_name} must be fully fired before settlement.")
 
-		if set(active_items) != seen:
-			missing = ", ".join(sorted(set(active_items) - seen))
+		if set(expected) != seen:
+			missing = ", ".join(sorted(set(expected) - seen))
 			frappe.throw(f"Restaurant Sale is missing billable Order Items: {missing}")
 
 	def on_submit(self):
@@ -100,9 +93,6 @@ class RestaurantAwareLedgixSale(LedgixSale):
 
 		self.status = "Submitted"
 		self.db_set("status", "Submitted", update_modified=False)
-
-		# Do NOT post Ledgix Sale OUT movements or FIFO/serial allocations here.
-		# Restaurant inventory was already consumed exactly once at KOT fire.
 		self.post_legacy_tenders_to_payment_ledger()
 		self.update_pos_shift_cash()
 		refresh_customer_credit_summary(self.customer)
