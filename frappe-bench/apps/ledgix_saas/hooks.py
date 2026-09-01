@@ -23,8 +23,6 @@ web_include_js = [
 	"/assets/ledgix_saas/js/ledgix_brand.js",
 ]
 
-# Homepage routing is only a UX default. Authorization remains enforced by
-# Page, DocType, Report and server-side permissions.
 role_home_page = {
 	"Ledgix Cashier": "ledgix-pos",
 	"Ledgix Manager": "Ledgix",
@@ -51,8 +49,6 @@ update_website_context = [
 	"ledgix_saas.api.brand.update_website_context",
 ]
 
-# Fiscal attributes captured on an open restaurant line are part of the
-# transaction snapshot. Financial adjustments on an open check are service-owned.
 doc_events = {
 	"Ledgix Restaurant Order Item": {
 		"before_insert": "ledgix_saas.services.restaurant_tax_snapshots.before_insert_order_item",
@@ -61,44 +57,29 @@ doc_events = {
 	"Ledgix Restaurant Order": {
 		"validate": "ledgix_saas.services.restaurant_settlement.validate_order_adjustment_mutation",
 	},
+	"Ledgix Purchase": {
+		"on_submit": "ledgix_saas.services.purchase_orders.sync_purchase_order_receipt_status",
+		"on_cancel": "ledgix_saas.services.purchase_orders.sync_purchase_order_receipt_status",
+	},
 }
 
-# Ledgix Sale remains the single finalized fiscal/payment document. The override
-# changes only restaurant-source policy: locked tax snapshots and no second stock
-# posting after KOT consumption. Ordinary Retail/B2B Sale behavior delegates to
-# the original controller unchanged.
 override_doctype_class = {
 	"Ledgix Sale": "ledgix_saas.overrides.restaurant_sale.RestaurantAwareLedgixSale",
 }
 
-# Keep legacy HTTP contracts stable while routing them through the current
-# environment-aware / branch-aware authoritative services.
 override_whitelisted_methods = {
 	"ledgix_saas.api.tax_center.get_fbr_readiness": "ledgix_saas.api.fbr_preflight.get_fbr_readiness",
 	"ledgix_saas.api.business_intelligence.get_business_intelligence_data": "ledgix_saas.api.inventory_intelligence.get_inventory_intelligence_data",
 }
 
-# Production FBR recovery is intentionally fail-closed. An ambiguous POST/HTTP
-# failure can mean FBR received the invoice even when Ledgix did not receive the
-# response, so automatic retransmission is disabled until reconciliation-safe
-# status checking is implemented and proven against the client Sandbox/PRAL flow.
+# Production FBR recovery is intentionally fail-closed until a reconciliation-safe
+# status API exists; automatic ambiguous retransmission remains disabled.
 scheduler_events = {}
 
-# Export customizations, business roles, Workspace, and property metadata.
 fixtures = [
 	{
 		"doctype": "Role",
-		"filters": [
-			[
-				"name",
-				"in",
-				[
-					"Ledgix Admin",
-					"Ledgix Manager",
-					"Ledgix Cashier",
-				],
-			]
-		],
+		"filters": [["name", "in", ["Ledgix Admin", "Ledgix Manager", "Ledgix Cashier"]]],
 	},
 	{
 		"doctype": "Workspace",
