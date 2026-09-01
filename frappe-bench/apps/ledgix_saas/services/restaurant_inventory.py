@@ -14,7 +14,7 @@ def get_standard_inventory_item(item, workflow="transfer/waste"):
 	row = frappe.db.get_value(
 		"Ledgix Item",
 		item,
-		["name", "item_name", "active", "track_inventory", "tracking_type", "stock_uom", "cost_price"],
+		["name", "item_code", "item_name", "active", "track_inventory", "tracking_type", "stock_uom", "cost_price", "restaurant_item_type"],
 		as_dict=True,
 	)
 	if not row or not int(row.active or 0):
@@ -26,6 +26,66 @@ def get_standard_inventory_item(item, workflow="transfer/waste"):
 			f"{row.tracking_type} item {row.item_name or item} requires identity-preserving lot/serial handling and cannot use the generic Restaurant V1 {workflow} workflow."
 		)
 	return row
+
+
+def get_stock_count_sheet(branch=None, stock_location=None, query=None):
+	"""Return countable inventory for one authoritative restaurant location."""
+	branch, stock_location = resolve_branch_location(branch, stock_location)
+	items = frappe.get_all(
+		"Ledgix Item",
+		filters={"active": 1, "track_inventory": 1},
+		fields=[
+			"name", "item_code", "item_name", "restaurant_item_type", "tracking_type", "stock_uom", "cost_price",
+		],
+		order_by="item_name asc, item_code asc",
+		limit_page_length=0,
+	)
+	if query:
+		text = str(query).strip().lower()
+		items = [
+			row for row in items
+			if text in str(row.item_name or "").lower()
+			or text in str(row.item_code or "").lower()
+			or text in str(row.name or "").lower()
+		]
+
+	balances = {
+		row.item: row
+		for row in frappe.get_all(
+			"Ledgix Stock Balance",
+			filters={"branch": branch, "stock_location": stock_location},
+			fields=["item", "quantity", "valuation_rate", "stock_value"],
+			limit_page_length=0,
+		)
+	}
+	countable = []
+	unsupported = []
+	for item in items:
+		balance = balances.get(item.name)
+		tracking_type = item.tracking_type or "Normal"
+		row = {
+			"item": item.name,
+			"item_code": item.item_code,
+			"item_name": item.item_name,
+			"restaurant_item_type": item.restaurant_item_type,
+			"tracking_type": tracking_type,
+			"uom": item.stock_uom,
+			"expected_quantity": flt(balance.quantity if balance else 0, 6),
+			"valuation_rate": flt(balance.valuation_rate if balance else item.cost_price, 6),
+			"stock_value": flt(balance.stock_value if balance else 0, 4),
+		}
+		if tracking_type in UNSUPPORTED_RESTAURANT_TRACKING:
+			row["reason"] = "Lot/Serial identity must be counted with an identity-preserving workflow."
+			unsupported.append(row)
+		else:
+			countable.append(row)
+
+	return {
+		"branch": branch,
+		"stock_location": stock_location,
+		"items": countable,
+		"unsupported_items": unsupported,
+	}
 
 
 def normalize_transfer_context(source_branch, source_location, destination_branch, destination_location):
