@@ -25,11 +25,49 @@ def _require_manager(message):
 		frappe.throw(message, frappe.PermissionError)
 
 
-def _open_shift():
+def _open_shift(branch=None):
 	filters = {"status": "Open", "docstatus": 0}
-	if frappe.get_meta("Ledgix POS Shift").has_field("opened_by"):
+	meta = frappe.get_meta("Ledgix POS Shift")
+	if meta.has_field("opened_by"):
 		filters["opened_by"] = frappe.session.user
+	if branch and meta.has_field("branch"):
+		filters["branch"] = branch
 	return frappe.db.get_value("Ledgix POS Shift", filters, "name", order_by="creation desc")
+
+
+def _resolve_pos_context(branch=None, stock_location=None, sale_channel="Retail", require_shift=False):
+	"""Resolve the inventory context used by catalog, preview and final checkout.
+
+	An open shift owns the register's branch/location. Without a shift (allowed for
+	catalog browsing and B2B back-office work), normal user/branch defaults apply.
+	"""
+	from ledgix_saas.services.organization import resolve_branch_location
+
+	shift_name = _open_shift(branch=branch)
+	if require_shift and sale_channel == "Retail" and not shift_name:
+		frappe.throw(_("Open a POS shift before retail checkout."))
+
+	if shift_name:
+		shift = frappe.db.get_value(
+			"Ledgix POS Shift",
+			shift_name,
+			["branch", "stock_location"],
+			as_dict=True,
+		)
+		if shift:
+			if branch and shift.branch and branch != shift.branch:
+				frappe.throw(_("Selected Branch does not match the open POS Shift."))
+			if stock_location and shift.stock_location and stock_location != shift.stock_location:
+				frappe.throw(_("Selected Stock Location does not match the open POS Shift."))
+			branch = branch or shift.branch
+			stock_location = stock_location or shift.stock_location
+
+	branch, stock_location = resolve_branch_location(
+		branch,
+		stock_location,
+		purpose="consumption",
+	)
+	return branch, stock_location, shift_name
 
 
 def _customer_name(customer, sale_channel):
@@ -86,7 +124,14 @@ def _categories():
 	)
 
 
-def _resolve_catalog_item(item_name, customer, sale_channel, price_list, transaction_date=None):
+def _resolve_catalog_item(
+	item_name,
+	customer,
+	sale_channel,
+	price_list,
+	stock_location,
+	transaction_date=None,
+):
 	item = frappe.db.get_value(
 		"Ledgix Item",
 		item_name,
@@ -95,6 +140,12 @@ def _resolve_catalog_item(item_name, customer, sale_channel, price_list, transac
 	)
 	if not item or not item.active:
 		return None
+
+	from ledgix_saas.services.stock import get_location_stock
+
+	item["aggregate_stock"] = flt(item.current_stock)
+	item["current_stock"] = get_location_stock(item.name, stock_location)
+	item["stock_location"] = stock_location
 	price = resolve_item_price(
 		item.name,
 		customer=customer,
@@ -106,7 +157,7 @@ def _resolve_catalog_item(item_name, customer, sale_channel, price_list, transac
 
 
 @frappe.whitelist()
-def get_pos_v2_boot(customer=None, sale_channel="Retail"):
+def get_pos_v2_boot(customer=None, sale_channel="Retail", branch=None, stock_location=None):
 	require_ledgix_cashier_or_above()
 	sale_channel = sale_channel if sale_channel in {"Retail", "B2B"} else "Retail"
 	if sale_channel == "B2B":
@@ -116,15 +167,23 @@ def get_pos_v2_boot(customer=None, sale_channel="Retail"):
 			frappe.throw(_("Customer not found."))
 	else:
 		customer = _customer_name(customer, "Retail")
+
+	branch, stock_location, shift = _resolve_pos_context(
+		branch,
+		stock_location,
+		sale_channel=sale_channel,
+	)
 	price_list = resolve_price_list(customer, None, sale_channel)
 	return {
 		"sale_channel": sale_channel,
+		"branch": branch,
+		"stock_location": stock_location,
 		"customer": _customer_context(customer, sale_channel),
 		"price_list": price_list,
 		"price_lists": frappe.get_all("Ledgix Price List", filters={"enabled": 1}, fields=["name", "price_list_name", "currency"], order_by="priority asc, price_list_name asc") if frappe.db.exists("DocType", "Ledgix Price List") else [],
 		"payment_methods": _payment_methods(),
 		"categories": _categories(),
-		"active_shift": _open_shift(),
+		"active_shift": shift,
 		"can_b2b": _manager_or_above(),
 		"can_discount": _manager_or_above(),
 		"can_override_price": _manager_or_above(),
@@ -132,10 +191,24 @@ def get_pos_v2_boot(customer=None, sale_channel="Retail"):
 
 
 @frappe.whitelist()
-def search_pos_v2_items(query=None, category=None, customer=None, sale_channel="Retail", price_list=None, limit=80):
+def search_pos_v2_items(
+	query=None,
+	category=None,
+	customer=None,
+	sale_channel="Retail",
+	price_list=None,
+	limit=80,
+	branch=None,
+	stock_location=None,
+):
 	require_ledgix_cashier_or_above()
 	sale_channel = sale_channel if sale_channel in {"Retail", "B2B"} else "Retail"
 	customer = _customer_name(customer, sale_channel)
+	branch, stock_location, _shift = _resolve_pos_context(
+		branch,
+		stock_location,
+		sale_channel=sale_channel,
+	)
 	price_list = resolve_price_list(customer, price_list, sale_channel)
 	filters = {"active": 1}
 	if category and category != "All":
@@ -158,18 +231,42 @@ def search_pos_v2_items(query=None, category=None, customer=None, sale_channel="
 		limit_page_length=min(max(int(limit or 80), 1), 200),
 	)
 	return {
+		"branch": branch,
+		"stock_location": stock_location,
 		"price_list": price_list,
-		"items": [row for row in (_resolve_catalog_item(name, customer, sale_channel, price_list) for name in items) if row],
+		"items": [
+			row
+			for row in (
+				_resolve_catalog_item(
+					name,
+					customer,
+					sale_channel,
+					price_list,
+					stock_location,
+				)
+				for name in items
+			)
+			if row
+		],
 	}
 
 
-def _prepare_lines(cart_items, customer, sale_channel, price_list, discount_type, discount_value):
+def _prepare_lines(
+	cart_items,
+	customer,
+	sale_channel,
+	price_list,
+	discount_type,
+	discount_value,
+	stock_location,
+):
 	cart_items = _parse(cart_items) or []
 	if not cart_items:
 		frappe.throw(_("Cart is empty."))
 
 	prepared = []
 	subtotal = 0.0
+	requested_by_item = {}
 	for row in cart_items:
 		item_name = row.get("item")
 		qty = flt(row.get("qty") or row.get("quantity"))
@@ -188,12 +285,38 @@ def _prepare_lines(cart_items, customer, sale_channel, price_list, discount_type
 			override_reason=row.get("override_reason"),
 		)
 		item = frappe.db.get_value(
-			"Ledgix Item", item_name, ["item_name", "cost_price", "current_stock"], as_dict=True
+			"Ledgix Item",
+			item_name,
+			["item_name", "cost_price"],
+			as_dict=True,
 		)
-		if flt(item.current_stock) < qty:
-			frappe.throw(_("Not enough stock for {0}.").format(item.item_name))
+		if not item:
+			frappe.throw(_("Item {0} was not found.").format(item_name))
+
+		requested_by_item[item_name] = flt(requested_by_item.get(item_name)) + qty
 		subtotal += qty * flt(price["rate"])
-		prepared.append({"item": item_name, "qty": qty, "item_meta": item, **price, "serial_numbers": row.get("serial_numbers") or ""})
+		prepared.append({
+			"item": item_name,
+			"qty": qty,
+			"item_meta": item,
+			**price,
+			"serial_numbers": row.get("serial_numbers") or "",
+		})
+
+	from ledgix_saas.services.stock import get_location_stock
+
+	for item_name, requested_qty in requested_by_item.items():
+		available = get_location_stock(item_name, stock_location, for_update=True)
+		if requested_qty > available + 0.000001:
+			item_label = frappe.db.get_value("Ledgix Item", item_name, "item_name") or item_name
+			frappe.throw(
+				_("Not enough stock for {0} at {1}. Available: {2:g}; requested: {3:g}.").format(
+					item_label,
+					stock_location,
+					available,
+					requested_qty,
+				)
+			)
 
 	discount_value = max(flt(discount_value), 0)
 	if discount_value and not _manager_or_above():
@@ -210,9 +333,26 @@ def _prepare_lines(cart_items, customer, sale_channel, price_list, discount_type
 	return prepared, flt(subtotal, 2), discount_type, flt(discount_value, 2), flt(discount_amount, 2)
 
 
-def _build_sale(customer, sale_channel, price_list, cart_items, discount_type, discount_value, pos_shift=None, client_sale_id=None):
+def _build_sale(
+	customer,
+	sale_channel,
+	price_list,
+	cart_items,
+	discount_type,
+	discount_value,
+	pos_shift=None,
+	client_sale_id=None,
+	branch=None,
+	stock_location=None,
+):
 	prepared, subtotal, discount_type, discount_value, discount_amount = _prepare_lines(
-		cart_items, customer, sale_channel, price_list, discount_type, discount_value
+		cart_items,
+		customer,
+		sale_channel,
+		price_list,
+		discount_type,
+		discount_value,
+		stock_location,
 	)
 	sale = frappe.new_doc("Ledgix Sale")
 	sale.customer = customer
@@ -220,6 +360,10 @@ def _build_sale(customer, sale_channel, price_list, cart_items, discount_type, d
 	sale.price_list = price_list
 	sale.sale_date = today()
 	sale.pos_shift = pos_shift
+	if frappe.get_meta("Ledgix Sale").has_field("branch"):
+		sale.branch = branch
+	if frappe.get_meta("Ledgix Sale").has_field("stock_location"):
+		sale.stock_location = stock_location
 	sale.status = "Draft"
 	sale.client_sale_id = client_sale_id or None
 	sale.subtotal_before_discount = subtotal
@@ -246,14 +390,38 @@ def _build_sale(customer, sale_channel, price_list, cart_items, discount_type, d
 
 
 @frappe.whitelist()
-def preview_pos_v2_checkout(cart_items=None, customer=None, sale_channel="Retail", price_list=None, discount_type="Amount", discount_value=0):
+def preview_pos_v2_checkout(
+	cart_items=None,
+	customer=None,
+	sale_channel="Retail",
+	price_list=None,
+	discount_type="Amount",
+	discount_value=0,
+	branch=None,
+	stock_location=None,
+):
 	require_ledgix_cashier_or_above()
 	sale_channel = sale_channel if sale_channel in {"Retail", "B2B"} else "Retail"
 	if sale_channel == "B2B":
 		_require_manager(_("B2B checkout requires Manager or Admin access."))
 	customer = _customer_name(customer, sale_channel)
 	price_list = resolve_price_list(customer, price_list, sale_channel)
-	sale = _build_sale(customer, sale_channel, price_list, cart_items, discount_type, discount_value, pos_shift=_open_shift())
+	branch, stock_location, shift = _resolve_pos_context(
+		branch,
+		stock_location,
+		sale_channel=sale_channel,
+	)
+	sale = _build_sale(
+		customer,
+		sale_channel,
+		price_list,
+		cart_items,
+		discount_type,
+		discount_value,
+		pos_shift=shift,
+		branch=branch,
+		stock_location=stock_location,
+	)
 	credit = get_customer_receivables(customer) if sale_channel == "B2B" else None
 	return {
 		"subtotal": flt(sale.subtotal_before_discount),
@@ -263,6 +431,9 @@ def preview_pos_v2_checkout(cart_items=None, customer=None, sale_channel="Retail
 		"grand_total": flt(sale.grand_total),
 		"price_list": price_list,
 		"sale_channel": sale_channel,
+		"branch": branch,
+		"stock_location": stock_location,
+		"active_shift": shift,
 		"credit": credit,
 		"items": [{
 			"item": row.item,
@@ -287,6 +458,8 @@ def complete_pos_v2_sale(
 	discount_type="Amount",
 	discount_value=0,
 	client_sale_id=None,
+	branch=None,
+	stock_location=None,
 ):
 	require_ledgix_cashier_or_above()
 	sale_channel = sale_channel if sale_channel in {"Retail", "B2B"} else "Retail"
@@ -294,17 +467,42 @@ def complete_pos_v2_sale(
 		_require_manager(_("B2B checkout requires Manager or Admin access."))
 	customer = _customer_name(customer, sale_channel)
 	price_list = resolve_price_list(customer, price_list, sale_channel)
-	shift = _open_shift()
-	if sale_channel == "Retail" and not shift:
-		frappe.throw(_("Open a POS shift before retail checkout."))
+	branch, stock_location, shift = _resolve_pos_context(
+		branch,
+		stock_location,
+		sale_channel=sale_channel,
+		require_shift=True,
+	)
 
 	client_sale_id = (client_sale_id or "").strip()
 	if client_sale_id:
-		existing = frappe.db.get_value("Ledgix Sale", {"client_sale_id": client_sale_id, "docstatus": 1}, "name")
+		existing = frappe.db.get_value(
+			"Ledgix Sale",
+			{"client_sale_id": client_sale_id, "docstatus": 1},
+			["name", "branch", "stock_location"],
+			as_dict=True,
+		)
 		if existing:
-			return {"success": True, "sale": existing, "duplicate": True}
+			return {
+				"success": True,
+				"sale": existing.name,
+				"branch": existing.branch,
+				"stock_location": existing.stock_location,
+				"duplicate": True,
+			}
 
-	sale = _build_sale(customer, sale_channel, price_list, cart_items, discount_type, discount_value, pos_shift=shift, client_sale_id=client_sale_id)
+	sale = _build_sale(
+		customer,
+		sale_channel,
+		price_list,
+		cart_items,
+		discount_type,
+		discount_value,
+		pos_shift=shift,
+		client_sale_id=client_sale_id,
+		branch=branch,
+		stock_location=stock_location,
+	)
 	tenders = _parse(tenders) or []
 	for tender in tenders:
 		amount = flt(tender.get("amount"))
@@ -336,6 +534,8 @@ def complete_pos_v2_sale(
 		"sale": sale.name,
 		"invoice_number": sale.invoice_number,
 		"sale_channel": sale.sale_channel,
+		"branch": sale.branch,
+		"stock_location": sale.stock_location,
 		"price_list": sale.price_list,
 		"grand_total": flt(sale.grand_total),
 		"paid_amount": flt(sale.paid_amount),
