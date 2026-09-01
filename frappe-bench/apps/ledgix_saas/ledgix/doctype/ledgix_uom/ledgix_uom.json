@@ -1,0 +1,43 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:uom_name",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "uom_details_section",
+  "uom_name",
+  "symbol",
+  "uom_details_column",
+  "uom_type",
+  "decimal_precision",
+  "is_active"
+ ],
+ "fields": [
+  {"fieldname":"uom_details_section","fieldtype":"Section Break","label":"Unit of Measure"},
+  {"fieldname":"uom_name","fieldtype":"Data","in_list_view":1,"in_standard_filter":1,"label":"UOM Name","reqd":1,"unique":1},
+  {"fieldname":"symbol","fieldtype":"Data","in_list_view":1,"label":"Symbol","reqd":1},
+  {"fieldname":"uom_details_column","fieldtype":"Column Break"},
+  {"fieldname":"uom_type","fieldtype":"Select","in_list_view":1,"in_standard_filter":1,"label":"Type","options":"Count\nWeight\nVolume\nLength\nPackaging\nOther","reqd":1},
+  {"default":"3","description":"Display/input precision for this UOM. Conversion arithmetic still uses high precision internally.","fieldname":"decimal_precision","fieldtype":"Int","label":"Decimal Precision","reqd":1},
+  {"default":"1","fieldname":"is_active","fieldtype":"Check","in_list_view":1,"label":"Active"}
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "module": "Ledgix",
+ "name": "Ledgix UOM",
+ "naming_rule": "By fieldname",
+ "permissions": [
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"System Manager","share":1,"write":1},
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Admin","share":1,"write":1},
+  {"create":1,"delete":0,"email":0,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Manager","share":0,"write":1},
+  {"create":0,"delete":0,"email":0,"export":0,"print":0,"read":1,"report":0,"role":"Ledgix Cashier","share":0,"write":0}
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "uom_name",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1
+}
