@@ -1,0 +1,46 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:WST-{#####}",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "is_submittable": 1,
+ "field_order": [
+  "context_section","waste_date","branch","stock_location","context_column","waste_type","status","client_waste_id",
+  "items_section","items","totals_section","total_stock_quantity","total_waste_value","reason_section","reason","notes","amended_from"
+ ],
+ "fields": [
+  {"fieldname":"context_section","fieldtype":"Section Break","label":"Inventory Waste"},
+  {"fieldname":"waste_date","fieldtype":"Datetime","in_list_view":1,"in_standard_filter":1,"label":"Waste Date","reqd":1},
+  {"fieldname":"branch","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Branch","options":"Ledgix Branch","reqd":1},
+  {"fieldname":"stock_location","fieldtype":"Link","in_standard_filter":1,"label":"Stock Location","options":"Ledgix Stock Location","reqd":1},
+  {"fieldname":"context_column","fieldtype":"Column Break"},
+  {"default":"Spoilage","fieldname":"waste_type","fieldtype":"Select","in_list_view":1,"in_standard_filter":1,"label":"Waste Type","options":"Spoilage\nExpiry\nBreakage\nPrep Waste\nStaff Meal\nOther","reqd":1},
+  {"default":"Draft","fieldname":"status","fieldtype":"Select","in_list_view":1,"in_standard_filter":1,"label":"Status","options":"Draft\nSubmitted\nCancelled","read_only":1},
+  {"fieldname":"client_waste_id","fieldtype":"Data","hidden":1,"label":"Client Waste ID","no_copy":1,"unique":1},
+  {"fieldname":"items_section","fieldtype":"Section Break","label":"Items"},
+  {"fieldname":"items","fieldtype":"Table","label":"Items","options":"Ledgix Inventory Waste Item","reqd":1},
+  {"fieldname":"totals_section","fieldtype":"Section Break","label":"Totals"},
+  {"default":"0","fieldname":"total_stock_quantity","fieldtype":"Float","label":"Total Stock Quantity","precision":"6","read_only":1},
+  {"default":"0","fieldname":"total_waste_value","fieldtype":"Currency","label":"Waste Value","precision":"4","read_only":1},
+  {"fieldname":"reason_section","fieldtype":"Section Break","label":"Reason / Notes"},
+  {"fieldname":"reason","fieldtype":"Small Text","label":"Reason","reqd":1},
+  {"fieldname":"notes","fieldtype":"Small Text","label":"Notes"},
+  {"fieldname":"amended_from","fieldtype":"Link","label":"Amended From","no_copy":1,"options":"Ledgix Inventory Waste","print_hide":1,"read_only":1,"search_index":1}
+ ],
+ "grid_page_length":50,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Inventory Waste",
+ "naming_rule":"Expression (old style)",
+ "permissions":[
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"submit":1,"cancel":1,"amend":1,"role":"System Manager","share":1,"write":1},
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"submit":1,"cancel":1,"amend":1,"role":"Ledgix Admin","share":1,"write":1},
+  {"create":1,"delete":0,"email":0,"export":1,"print":1,"read":1,"report":1,"submit":1,"cancel":1,"amend":1,"role":"Ledgix Manager","share":0,"write":1}
+ ],
+ "search_fields":"branch,stock_location,waste_type,reason",
+ "sort_field":"waste_date",
+ "sort_order":"DESC",
+ "states":[],
+ "track_changes":1
+}
