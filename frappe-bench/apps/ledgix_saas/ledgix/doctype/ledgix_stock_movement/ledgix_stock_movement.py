@@ -11,10 +11,16 @@ class LedgixStockMovement(Document):
     def validate(self):
         if not self.item:
             frappe.throw("Item is required.")
-        if flt(self.quantity) <= 0:
-            frappe.throw("Movement quantity must be greater than zero.")
         if self.movement_type not in {"IN", "OUT", "ADJUSTMENT"}:
             frappe.throw(f"Invalid movement type: {self.movement_type}")
+
+        quantity = flt(self.quantity)
+        if self.movement_type == "ADJUSTMENT":
+            if quantity < 0:
+                frappe.throw("Adjustment quantity cannot be negative.")
+        elif quantity <= 0:
+            frappe.throw("Movement quantity must be greater than zero.")
+
         if self.valuation_rate is not None and flt(self.valuation_rate) < 0:
             frappe.throw("Valuation Rate cannot be negative.")
 
