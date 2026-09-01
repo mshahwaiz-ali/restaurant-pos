@@ -1,7 +1,7 @@
 app_name = "ledgix_saas"
-app_title = "Ledgix"
+app_title = "Ledgix Restaurant"
 app_publisher = "Ali"
-app_description = "POS and inventory platform for retail shops"
+app_description = "Restaurant management, POS, inventory and fiscal compliance platform"
 app_email = "alishahwaiz96@gmail.com"
 app_license = "mit"
 

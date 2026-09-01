@@ -1,7 +1,7 @@
 [project]
 name = "ledgix_saas"
 authors = [{ name = "Ali", email = "alishahwaiz96@gmail.com" }]
-description = "POS and inventory platform for retail shops"
+description = "Restaurant management, POS, inventory and fiscal compliance platform"
 requires-python = ">=3.10"
 dynamic = ["version"]
 
@@ -73,6 +73,10 @@ packages = [
     "ledgix.doctype.ledgix_payment_method",
     "ledgix.doctype.ledgix_payment",
     "ledgix.doctype.ledgix_payment_allocation",
+    "ledgix.doctype.ledgix_restaurant_brand",
+    "ledgix.doctype.ledgix_branch",
+    "ledgix.doctype.ledgix_stock_location",
+    "ledgix.doctype.ledgix_stock_balance",
 ]
 
 [tool.setuptools.package-dir]

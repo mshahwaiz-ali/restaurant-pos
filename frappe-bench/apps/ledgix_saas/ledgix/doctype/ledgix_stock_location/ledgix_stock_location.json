@@ -1,0 +1,43 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:location_key",
+ "creation": "2026-09-01 09:20:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["identity_section", "branch", "location_code", "location_name", "location_type", "is_active", "defaults_section", "is_default_receiving", "is_default_consumption", "location_key"],
+ "fields": [
+  {"fieldname":"identity_section","fieldtype":"Section Break","label":"Stock Location"},
+  {"fieldname":"branch","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Branch","options":"Ledgix Branch","reqd":1},
+  {"fieldname":"location_code","fieldtype":"Data","in_list_view":1,"label":"Location Code","reqd":1},
+  {"fieldname":"location_name","fieldtype":"Data","in_list_view":1,"label":"Location Name","reqd":1},
+  {"default":"Store","fieldname":"location_type","fieldtype":"Select","in_standard_filter":1,"label":"Location Type","options":"Store\nKitchen\nPrep\nBar\nPackaging\nOther","reqd":1},
+  {"default":"1","fieldname":"is_active","fieldtype":"Check","in_list_view":1,"in_standard_filter":1,"label":"Active"},
+  {"fieldname":"defaults_section","fieldtype":"Section Break","label":"Default Usage"},
+  {"default":"0","fieldname":"is_default_receiving","fieldtype":"Check","label":"Default Receiving Location"},
+  {"default":"0","fieldname":"is_default_consumption","fieldtype":"Check","label":"Default Consumption Location"},
+  {"fieldname":"location_key","fieldtype":"Data","hidden":1,"label":"Location Key","read_only":1,"unique":1}
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-01 09:20:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ledgix",
+ "name": "Ledgix Stock Location",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"System Manager","share":1,"write":1},
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Admin","share":1,"write":1},
+  {"create":1,"delete":0,"email":0,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Manager","share":0,"write":1},
+  {"create":0,"delete":0,"email":0,"export":0,"print":0,"read":1,"report":0,"role":"Ledgix Cashier","share":0,"write":0}
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "search_fields": "location_code,location_name",
+ "sort_field": "branch",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1
+}

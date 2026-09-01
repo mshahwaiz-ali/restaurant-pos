@@ -1,0 +1,39 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:balance_key",
+ "creation": "2026-09-01 09:20:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["balance_section", "branch", "stock_location", "item", "quantity", "valuation_rate", "stock_value", "balance_key"],
+ "fields": [
+  {"fieldname":"balance_section","fieldtype":"Section Break","label":"Stock Balance"},
+  {"fieldname":"branch","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Branch","options":"Ledgix Branch","read_only":1,"reqd":1},
+  {"fieldname":"stock_location","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Stock Location","options":"Ledgix Stock Location","reqd":1},
+  {"fieldname":"item","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Item","options":"Ledgix Item","reqd":1},
+  {"default":"0","fieldname":"quantity","fieldtype":"Float","in_list_view":1,"label":"Quantity","read_only":1},
+  {"default":"0","fieldname":"valuation_rate","fieldtype":"Currency","label":"Valuation Rate","read_only":1},
+  {"default":"0","fieldname":"stock_value","fieldtype":"Currency","label":"Stock Value","read_only":1},
+  {"fieldname":"balance_key","fieldtype":"Data","hidden":1,"label":"Balance Key","read_only":1,"unique":1}
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-01 09:20:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ledgix",
+ "name": "Ledgix Stock Balance",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {"create":1,"delete":1,"email":0,"export":1,"print":1,"read":1,"report":1,"role":"System Manager","share":0,"write":1},
+  {"create":0,"delete":0,"email":0,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Admin","share":0,"write":0},
+  {"create":0,"delete":0,"email":0,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Manager","share":0,"write":0}
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "search_fields": "stock_location,item",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
