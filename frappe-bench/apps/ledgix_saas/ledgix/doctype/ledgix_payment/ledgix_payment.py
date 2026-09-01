@@ -9,6 +9,7 @@ class LedgixPayment(Document):
 		self._validate_payment_method()
 		self._validate_amounts()
 		self._validate_allocations()
+		self._resolve_branch()
 
 	def _validate_payment_method(self):
 		method = frappe.db.get_value(
@@ -87,6 +88,38 @@ class LedgixPayment(Document):
 
 		self.allocated_amount = allocated
 		self.unallocated_amount = max(flt(self.amount) - allocated, 0)
+
+	def _resolve_branch(self):
+		from ledgix_saas.services.organization import ensure_branch_access, get_default_branch
+
+		candidates = set()
+		if getattr(self, "branch", None):
+			candidates.add(self.branch)
+
+		if self.pos_shift:
+			shift_branch = frappe.db.get_value("Ledgix POS Shift", self.pos_shift, "branch")
+			if shift_branch:
+				candidates.add(shift_branch)
+
+		for row in self.allocations:
+			if row.reference_doctype == "Ledgix Sale" and row.reference_name:
+				sale_branch = frappe.db.get_value("Ledgix Sale", row.reference_name, "branch")
+				if sale_branch:
+					candidates.add(sale_branch)
+
+		if self.reversal_of:
+			original_branch = frappe.db.get_value("Ledgix Payment", self.reversal_of, "branch")
+			if original_branch:
+				candidates.add(original_branch)
+
+		if len(candidates) > 1:
+			frappe.throw(_("A payment cannot span multiple restaurant branches."))
+
+		branch = next(iter(candidates), None) or get_default_branch()
+		if not branch:
+			frappe.throw(_("No active restaurant branch is configured for this payment."))
+		ensure_branch_access(branch)
+		self.branch = branch
 
 	def on_submit(self):
 		if self.status == "Draft":
