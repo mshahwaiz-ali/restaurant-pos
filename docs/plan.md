@@ -1,2843 +1,1806 @@
-Plan For Resturant POS
+# Ledgix Restaurant — Product Architecture & Implementation Blueprint
 
-# Ledgix Restaurant Management & POS
-
-## Locked Product Architecture & Development Blueprint — v1.0
-
-**Product Type:** Restaurant Management System + Point of Sale
-**Foundation:** Ledgix + Frappe/ERPNext
-**Target:** Single Restaurant → Multi-Branch Restaurant → Multi-Brand / Multi-Chain Group
+**Status:** Architecture baseline for implementation  
+**Version:** 2.0  
+**Product:** Restaurant Management System + Point of Sale  
+**Technical foundation:** Frappe Framework v15 + existing `ledgix_saas` application  
+**Deployment target:** Single restaurant → multi-branch → multi-brand / multi-chain  
 
 ---
 
-# 1. Product Vision
+## 1. Product Vision
 
-Ledgix Restaurant will be a complete restaurant operating platform built around one simple principle:
+Ledgix Restaurant will be a serious restaurant operating platform whose front-of-house experience feels simple even when the engine behind it is powerful.
 
-> **Running a restaurant should feel simple even if the system behind it is powerful.**
+The product must not feel like an ERP screen with restaurant labels added on top. Each role should see the workflow that matters to that role:
 
-It will not be an overloaded ERP screen presented to restaurant staff.
+- Cashier: fast order and payment surface.
+- Waiter/server: tables, open checks, ordering and course control.
+- Kitchen: KDS/KOT only.
+- Expo: order coordination and final hand-off.
+- Store/purchase staff: stock, receiving, transfers, waste and reorder work.
+- Branch manager: live branch operations, exceptions and approvals.
+- Owner/admin: cross-branch control and analytics.
+- Accountant/back office: financial reports and optional future accounting integration.
 
-Instead:
+The design target is a clean, calm, touch-first product: strong hierarchy, minimum visual noise, generous spacing, predictable actions, fast keyboard/touch interaction and very little unnecessary navigation.
 
-* Cashier sees the POS.
-* Waiter sees tables and orders.
-* Kitchen sees KDS/KOT.
-* Store staff sees inventory.
-* Manager sees branch operations.
-* Accountant sees ERPNext finance.
-* Owner sees the entire business from one clean dashboard.
-
-The product should work equally well for:
-
-### A. Single Restaurant
-
-```text
-ABC Restaurant
-└── DHA Branch
-```
-
-Everything works without exposing chain-related complexity.
-
-### B. Multi-Branch Restaurant
-
-```text
-ABC Restaurant
-├── DHA
-├── Gulberg
-├── Johar Town
-└── Islamabad
-```
-
-Shared menus, centralized reporting and controlled branch configuration.
-
-### C. Multi-Brand / Multi-Chain Group
-
-```text
-Restaurant Group
-│
-├── Burger Brand
-│   ├── DHA
-│   └── Gulberg
-│
-├── Pizza Brand
-│   ├── DHA
-│   └── Islamabad
-│
-└── Cloud Kitchen Brand
-    └── Lahore Kitchen
-```
-
-The same architecture scales without creating a second product.
+This is not a plan to recreate Toast, Square, Lightspeed or Simphony feature-for-feature. Those products define the market bar. Ledgix should adopt the operational patterns that matter and avoid enterprise complexity that does not improve day-to-day restaurant work.
 
 ---
 
-# 2. Scope Philosophy
+# 2. Architecture Decision — Locked
 
-We are **not** trying to build every restaurant technology product in version one.
+## 2.1 Current Ledgix is the transaction engine
 
-The first product must perfectly handle five things:
+The current application already owns a substantial commerce domain:
 
-```text
-SELL
-  ↓
-COOK
-  ↓
-CONTROL STOCK
-  ↓
-CONTROL MONEY
-  ↓
-UNDERSTAND BUSINESS
-```
+- `Ledgix Item`
+- `Ledgix Category`
+- `Ledgix Customer`
+- `Ledgix Supplier`
+- `Ledgix Price List`
+- `Ledgix Item Price`
+- `Ledgix Sale`
+- `Ledgix Sale Item`
+- `Ledgix Sale Payment`
+- `Ledgix Payment`
+- `Ledgix Payment Allocation`
+- `Ledgix Payment Method`
+- `Ledgix Sales Return`
+- `Ledgix Purchase`
+- `Ledgix Stock Movement`
+- `Ledgix Stock Lot`
+- `Ledgix Stock Serial`
+- `Ledgix POS Shift`
+- tax profiles/rates/categories
+- FBR settings, validation, submission and audit logs
+- sales, stock, payment, receivable, pricing and tax services
 
-Everything else is secondary.
+The app also already has working transactional rules for pricing, payment, stock decrement/increment, COGS, gross profit, returns, shifts and FBR submission.
 
-This is important because competing systems already provide large feature catalogs. Foodics offers table management, coursing, multiple payments, order splitting, inventory, supplier purchasing, transfers and internal approvals; Petpooja provides multi-stage recipes, central kitchens and large-chain management; Toast combines restaurant POS, online ordering, inventory and multi-location management.
+**Therefore the restaurant product will extend this engine instead of duplicating it with ERPNext Sales Invoice, Payment Entry, Supplier, Purchase Receipt or Stock Ledger as a second source of truth.**
 
-Our goal therefore is **not feature-count competition**.
+## 2.2 Frappe is the platform layer
 
-Our goal is:
+Use Frappe aggressively where it is already strong:
 
-> Better integration, better control, better UX and better visibility.
+- Users, roles and permissions
+- User Permissions / branch scoping
+- standard forms and lists
+- workflow and approval primitives
+- document versioning and audit history
+- print formats
+- reports and dashboards
+- background jobs
+- realtime events / Socket.IO
+- notifications
+- files and attachments
+- import/export
+- standard Desk navigation and workspace
 
----
+Do not build custom UI merely because custom UI is possible.
 
-# 3. Scope We Are Locking
+## 2.3 ERPNext is not a hard dependency for Restaurant V1
 
-## Core Product — Build Now
+The current `ledgix_saas` package depends on Frappe, not ERPNext. Installing ERPNext now and using its parallel sales, purchase, payment and stock documents would create duplicated business truth.
 
-1. Restaurant organization / branch / chain architecture
-2. Menu management
-3. Variants, modifiers and combos
-4. Restaurant POS
-5. Dine-in tables and floor management
-6. Takeaway
-7. Basic phone/delivery orders
-8. Kitchen tickets / KOT
-9. Kitchen Display System
-10. Course / hold / fire workflow
-11. Bills and payment handling
-12. Split bills and mixed payments
-13. Cashier / till management
-14. Void / refund / discount controls
-15. Recipe management
-16. Ingredient consumption
-17. Restaurant inventory
-18. Stock counts
-19. Waste / spoilage / staff consumption
-20. Supplier purchasing
-21. Warehouse / branch transfers
-22. Basic central kitchen support
-23. Food costing
-24. Actual vs theoretical consumption
-25. Menu profitability
-26. Restaurant-specific dashboards
-27. Multi-branch / multi-chain reporting
-28. Employee access / roles / branch assignment
-29. Full audit trail
-30. ERPNext accounting integration
-31. Pakistan fiscal/FBR integration architecture
-32. Receipt and kitchen printing
-33. Operational notifications / exception alerts
-34. APIs and future integration framework
+ERPNext may be added later through a deliberate integration boundary when full general-ledger accounting is required.
 
----
+If that happens:
 
-# 4. Explicitly NOT in Core Version
+1. Ledgix operational transactions remain authoritative for restaurant operations.
+2. Finalized immutable Ledgix transactions produce accounting sync events.
+3. ERPNext accounting documents are generated through mappings/adapters.
+4. ERPNext stock must not independently post the same stock movements unless the architecture is intentionally migrated.
+5. Sync must be idempotent and reconciliable.
 
-These are deliberately deferred.
+No half-Ledgix / half-ERPNext transaction model is permitted.
 
-## Reservations / Waitlist
+## 2.4 Keep technical package names stable
 
-**HOLD.**
+Do **not** rename `ledgix_saas`, the Python module `ledgix`, existing DocTypes or API dotted paths during the restaurant conversion.
 
-No reservation engine in the initial product.
-
-The data architecture will not block it later, but we will not spend development time implementing reservations now.
+Product-facing branding can become **Ledgix Restaurant** immediately. Technical renaming is a separate migration project and has no customer value during V1.
 
 ---
 
-## Advanced Guest CRM
+# 3. Current Codebase Assessment
 
-**HOLD.**
+## 3.1 What is already strong and should be kept
 
-Basic customer details can still be attached to an order:
+### Commerce / financial transaction boundary
 
-* Name
-* Mobile
-* Address
-* Email
-* Basic order history
+`Ledgix Sale` is already a strong finalized-sale document with:
 
-But no:
+- retail/B2B channel awareness
+- customer and salesperson snapshots
+- item pricing snapshots
+- tax snapshots
+- discounts
+- split tender rows
+- paid / credit / outstanding amounts
+- COGS and gross profit
+- shift linkage
+- returns metadata
+- FBR state and invoice metadata
 
-* automated campaigns
-* customer segmentation engine
-* birthday campaigns
-* VIP workflows
-* preference tracking engine
-* marketing automation
+Its submit/cancel flow already coordinates stock, payment and FBR behavior. **Restaurant Order must not replace this finalized financial boundary.**
 
-Yet.
+### Pricing
 
----
+Keep and extend:
 
-## Payroll / Payslips
+- `Ledgix Price List`
+- `Ledgix Item Price`
+- effective-date pricing
+- customer/B2B pricing
+- authorized price override with reason
 
-**Not custom-built in RestaurantOS.**
+Restaurant menu pricing should reuse this pricing engine rather than create a second `menu_price` truth.
 
-Core restaurant staff management only needs:
+### Payments / receivables
 
-* employee/user
-* branch
-* role
-* access level
-* POS PIN
-* cashier assignment
-* manager authority
+Keep:
 
-If a client later needs full:
+- `Ledgix Payment`
+- `Ledgix Payment Allocation`
+- `Ledgix Payment Method`
+- `Ledgix Sale Payment`
 
-* attendance
-* leave
-* payroll
-* salary slips
-* overtime
-* biometric integration
+Restaurant settlement adds split-check and gratuity/service-charge behavior around this existing engine.
 
-we can enable/integrate **Frappe HR** separately.
+### Tax and FBR
 
-This prevents RestaurantOS itself becoming an HR project.
+Keep the existing Tax Center and FBR stack. This is a major product asset and should be adapted for branch-level fiscal configuration instead of rebuilt.
 
----
+### Shifts
 
-## Loyalty / Advanced Marketing
+Keep `Ledgix POS Shift` as the cashier/session cash-control foundation and extend it with branch/terminal context.
 
-Phase 2.
+### Returns
 
-Architecture remains compatible with:
+Keep the existing return engine for finalized restaurant sales. Restaurant-specific voids before settlement belong to the operational order workflow; refunds after settlement belong to `Ledgix Sales Return`.
 
-* points
-* tiers
-* vouchers
-* coupons
-* gift cards
-* campaign automation
+### Inventory intelligence and reports
 
-but these are not required for core restaurant operations.
+Keep the current inventory intelligence work and existing sales/purchase/stock reports. Add branch/location dimensions rather than throwing them away.
 
----
+### Frappe-native shell
 
-## Reservations / Customer CRM
+The current app has already reduced the old custom-chrome problem. Keep standard Frappe navigation/back behavior and only use immersive custom pages where the workflow needs them.
 
-Phase 2 or later.
+## 3.2 What must be modified
 
----
+The biggest architectural limitation is that current stock is effectively global per item. `Ledgix Item.current_stock` is not sufficient for a multi-branch restaurant.
 
-## Customer QR Ordering
+The following existing domains must become branch/location aware:
 
-Phase 2.
+- Item stock balance
+- Stock Movement
+- Purchase
+- Sale
+- Sales Return
+- POS Shift
+- lots/serials where used
+- inventory intelligence
+- reports
+- reorder logic
+- pricing context where branch pricing is enabled
+- tax/FBR context where fiscal identity differs by branch
+- User Profile access
 
----
+## 3.3 What should remain available but not dominate Restaurant UX
 
-## Self-Service Kiosk
+The following are valid platform capabilities but not primary restaurant surfaces:
 
-Phase 2.
+- B2B sales
+- receivables
+- stock serial numbers
+- classic retail POS Hold
+- B2B invoice format
 
----
-
-## Delivery Aggregator Integrations
-
-Phase 2.
-
-The core order model will already have:
-
-```text
-Order Source
-Channel
-External Order ID
-External Platform
-Commission
-Delivery Fee
-```
-
-so Foodpanda / Careem / other integrations can plug in later without redesigning orders.
+Do not delete stable capabilities simply because restaurants do not use them every day. Hide irrelevant shortcuts for restaurant roles and keep compatibility unless a feature actively conflicts with the restaurant architecture.
 
 ---
 
-## AI
+# 4. Source-of-Truth Matrix
 
-**Future only.**
+There must be exactly one authoritative owner for each business concept.
 
-No AI should delay production.
-
-AI becomes valuable after real production data exists.
-
-Recommended window:
-
-> Core system completed → production deployment → approximately 2–3 months operating data → AI layer.
-
-Potential future AI:
-
-* sales forecasting
-* stockout prediction
-* prep recommendations
-* purchase recommendations
-* suspicious transaction detection
-* supplier price anomaly detection
-* automated owner summaries
-* menu price recommendations
-
-But **none of this is required for V1**.
-
----
-
-# 5. Organization Architecture
-
-This is one of the most important architecture decisions.
-
-## Deployment
-
-Prefer:
-
-```text
-One Frappe Site
-=
-One Client / Restaurant Group
-```
-
-This gives strong data isolation.
-
-Inside each client:
-
-```text
-Client / Restaurant Group
-        ↓
-Legal Entity
-        ↓
-Brand
-        ↓
-Branch
-        ↓
-Restaurant Operations
-```
+| Concept | Authoritative model | Decision |
+|---|---|---|
+| Product / ingredient identity | `Ledgix Item` | Keep and extend |
+| Product category | `Ledgix Category` | Keep |
+| Menu presentation | New Restaurant Menu models | Add; never duplicate item master |
+| Price | `Ledgix Price List` + `Ledgix Item Price` | Keep and extend |
+| Customer | `Ledgix Customer` | Keep |
+| Supplier | `Ledgix Supplier` | Keep |
+| Cashier shift | `Ledgix POS Shift` | Keep and branch-enable |
+| Open restaurant check/order | New `Ledgix Restaurant Order` | Add |
+| Final fiscal sale | `Ledgix Sale` | Keep |
+| Payment | Ledgix payment domain | Keep |
+| Refund after finalized sale | `Ledgix Sales Return` | Keep |
+| Stock movement ledger | `Ledgix Stock Movement` | Keep and location-enable |
+| Per-location stock balance | New `Ledgix Stock Balance` | Add as maintained balance/cache |
+| Purchasing receipt | `Ledgix Purchase` | Keep and evolve |
+| Purchase order | New `Ledgix Purchase Order` | Add when procurement phase lands |
+| Recipe | New `Ledgix Recipe` | Add |
+| Kitchen dispatch | New KOT/KDS models | Add |
+| Tax/FBR | Existing Ledgix tax/FBR services | Keep and branch-enable |
+| Users/authentication | Frappe User / Role / User Permission | Keep native |
+| General ledger accounting | Optional ERPNext integration later | Not V1 core |
 
 ---
 
-# 6. Legal Company vs Brand vs Branch
+# 5. Organization, Branch and Location Foundation
 
-We should not make every restaurant branch an ERPNext Company.
+This phase comes **before** restaurant ordering because every serious restaurant workflow depends on correct location context.
 
-### ERPNext Company
+## 5.1 New organization models
 
-Represents a **legal/accounting entity**.
+### `Ledgix Restaurant Brand`
 
-### Restaurant Brand
+Business/concept identity, separate from the technical single `Ledgix Brand Settings` doctype.
 
-Represents the commercial concept.
+Suggested fields:
 
-Example:
+- brand name
+- code
+- active
+- display logo / optional theme override
+- default currency
+- default timezone
+- notes
 
-```text
-Zuberi Foods Pvt Ltd
-    │
-    ├── FireBurger
-    └── Napoli Pizza
-```
+`Ledgix Brand Settings` remains product/visual/legal fallback configuration. Do not overload it into a multi-record restaurant hierarchy.
 
-### Branch
+### `Ledgix Branch`
 
-Physical operating location.
+Required fields:
 
-```text
-FireBurger
-├── DHA
-├── Gulberg
-└── Islamabad
-```
+- restaurant brand
+- branch code
+- branch name
+- address
+- phone
+- timezone
+- currency
+- active
+- default price list
+- default tax profile
+- default stock location
+- default kitchen / expo configuration
+- receipt header/footer settings where needed
+- legal/fiscal identity link
 
-Each branch maps to appropriate ERPNext structures such as:
+For a single restaurant, installation should bootstrap one brand + one branch so chain complexity stays invisible.
 
-* Branch
-* Cost Center
-* Warehouse
-* POS configuration
-* Accounting defaults
+### `Ledgix Stock Location`
 
-This gives proper consolidated accounting without abusing ERP companies.
-
----
-
-# 7. Menu Management
-
-The menu must be restaurant-specific instead of merely exposing ERPNext Items.
-
-## Menu Structure
-
-```text
-Menu
- ├── Category
- │    ├── Burgers
- │    ├── Pizza
- │    ├── Drinks
- │    └── Desserts
- │
- └── Menu Item
-```
-
-Each menu item can contain:
-
-* Name
-* Image
-* Description
-* Category
-* Selling price
-* Tax
-* Recipe
-* Kitchen station
-* Active / inactive
-* Branch availability
-* Order-channel availability
-* Day/time availability
-* Preparation notes
-
----
-
-# 8. Variants
-
-Example:
-
-```text
-Pizza
-├── Small
-├── Medium
-└── Large
-```
-
-Variants may change:
-
-* selling price
-* ingredients
-* recipe quantities
-* preparation time
-
----
-
-# 9. Modifier Groups
-
-Example:
-
-```text
-Zinger Burger
-
-Cheese
-├── No Cheese
-├── Cheddar +100
-└── Double Cheese +180
-
-Sauce
-├── Mayo
-├── Garlic
-└── Spicy
-
-Extras
-├── Extra Patty
-├── Jalapeño
-└── Egg
-```
-
-Modifiers should affect both:
-
-### Selling Price
-
-and, where configured,
-
-### Ingredient Consumption
-
-Example:
-
-```text
-Extra Cheese
-Price: +Rs 120
-Stock effect: -1 Cheese Slice
-```
-
-This is essential for accurate food costing.
-
----
-
-# 10. Combos / Meals
-
-Support:
-
-```text
-Zinger Meal
-
-1 Zinger Burger
-+
-1 Fries
-+
-1 Drink
-```
-
-Drink may have selectable choices.
-
-Combo pricing may differ from individual product totals.
-
-All underlying recipe consumption must remain accurate.
-
----
-
-# 11. Multiple Menus
-
-Support:
-
-* Breakfast
-* Lunch
-* Dinner
-* Dine-in
-* Takeaway
-* Delivery
-* Brand-specific menus
-
-A branch can inherit a corporate menu and selectively override allowed values.
-
----
-
-# 12. Branch Pricing
-
-Example:
-
-```text
-Burger
-
-DHA             Rs 850
-Islamabad       Rs 900
-Delivery        Rs 950
-```
-
-Pricing should support:
-
-* default price
-* branch price
-* channel price
-
-without creating duplicate menu items.
-
----
-
-# 13. Menu Availability / 86
-
-When an item is unavailable:
-
-```text
-BURGER → SOLD OUT
-```
-
-Cashier and waiter should see this immediately.
-
-Manager can manually 86/un-86 items.
-
-Later this can be automatically tied to ingredient availability.
-
----
-
-# 14. POS / Service Console
-
-This is the product's most important interface.
-
-It must feel extremely fast.
-
-## Core Order Types
-
-```text
-Dine-In
-Takeaway
-Delivery
-Phone Order
-```
-
-Future order sources can plug into the same engine.
-
----
-
-# 15. POS Workflow
-
-Typical counter workflow:
-
-```text
-New Order
-   ↓
-Select Items
-   ↓
-Variants / Modifiers
-   ↓
-Optional Notes
-   ↓
-Send Kitchen
-   ↓
-Payment
-   ↓
-Receipt
-   ↓
-Close
-```
-
-The interface should minimize clicks.
-
----
-
-# 16. Dine-In Architecture
-
-For dine-in:
-
-```text
-Floor
-  ↓
-Table
-  ↓
-Dining Session
-  ↓
-Restaurant Order
-  ↓
-Kitchen Tickets
-  ↓
-Check / Bill
-  ↓
-Payment
-```
-
-This is intentionally separate from the final ERP invoice.
-
-A restaurant order exists **before accounting settlement**.
-
----
-
-# 17. Floor Management
-
-Manager can configure:
-
-* Floors
-* Areas
-* Tables
-* Table number
-* Seating capacity
-* Shape/position where useful
+Location belongs to a branch.
 
 Examples:
 
-```text
-Ground Floor
-VIP Hall
-Terrace
-Outdoor
-```
-
-Current systems such as Odoo, Square and Foodics already treat table/floor management as baseline full-service functionality.
-
----
-
-# 18. Table Status
-
-Simple visual states:
-
-```text
-Available
-Occupied
-Ordering
-Kitchen
-Ready
-Billing
-```
-
-No unnecessary complexity.
-
----
-
-# 19. Table Transfer
-
-Customer moves:
-
-```text
-Table 4
-   ↓
-Table 9
-```
-
-Order follows the table.
-
----
-
-# 20. Table Merge
-
-Two parties join:
-
-```text
-Table 4 + Table 5
-```
-
-Orders may be merged into one dining session without losing audit history.
-
----
-
-# 21. Server / Waiter Assignment
-
-Optional waiter can be assigned to:
-
-* table
-* session
-* order
-
-Manager reports can then show sales by waiter without implementing full HR.
-
----
-
-# 22. Courses
-
-Enough functionality for proper full-service restaurants:
-
-```text
-Starters
-Main
-Dessert
-```
-
-Waiter can:
-
-```text
-HOLD
-```
-
-and later:
-
-```text
-FIRE
-```
-
-No advanced AI timing or kitchen optimization in V1.
-
----
-
-# 23. Bill Splitting
-
-Support the methods people actually use:
-
-### By Item
-
-Guest A pays burger.
-
-Guest B pays pizza.
-
-### Equal Split
-
-```text
-Rs 9,000
-÷
-3 people
-=
-Rs 3,000 each
-```
-
-### Custom Amount
-
-Manual partial amount.
-
-Seat-level sophistication can be expanded later if genuinely demanded.
-
----
-
-# 24. Mixed Payments
-
-One bill may have:
-
-```text
-Cash      Rs 2,000
-Card      Rs 5,000
-Wallet    Rs 3,000
-```
-
-Total settlement must always reconcile exactly.
-
----
-
-# 25. Payment Methods
-
-Configurable:
-
-* Cash
-* Debit/Credit Card
-* Bank
-* Wallet
-* QR Payment
-* Other configured modes
-
-ERP accounting mapping remains centralized.
-
----
-
-# 26. Service Charges, Tips and Taxes
-
-Support configurable:
-
-* sales tax
-* service charge
-* tips
-* branch-specific taxation where appropriate
-
-Final accounting posting must be deterministic and auditable.
-
----
-
-# 27. Kitchen Order Ticket — KOT
-
-Kitchen operations must not depend on the final invoice.
-
-When waiter presses:
-
-```text
-SEND TO KITCHEN
-```
-
-a KOT is created.
-
----
-
-# 28. Delta KOT
-
-Critical restaurant behavior.
-
-Original:
-
-```text
-Burger
-Fries
-```
-
-Five minutes later customer adds:
-
-```text
-Coke
-```
-
-Kitchen receives:
-
-```text
-ADD
-+ Coke
-```
-
-The original ticket is not regenerated.
-
----
-
-# 29. KOT Cancellation
-
-If food has already been fired:
-
-```text
-CANCEL ITEM
-```
-
-must produce an auditable cancellation event containing:
-
-* original item
-* quantity
-* employee
-* time
-* reason
-* manager approval where required
-
-The original kitchen history never disappears.
-
----
-
-# 30. Kitchen Stations
-
-Examples:
-
-```text
-Grill
-Fryer
-Pizza
-Bar
-Dessert
-Cold Kitchen
-```
-
-Each menu item routes automatically.
-
-Example:
-
-```text
-Burger → Grill
-Fries  → Fryer
-Coke   → Bar
-```
-
----
-
-# 31. Kitchen Display System
-
-KDS should provide:
-
-* station-specific tickets
-* order number
-* table/order type
-* items
-* modifiers
-* notes
-* elapsed time
-* priority
-* item status
-* order status
-* bump
-* recall
-
----
-
-# 32. KDS Timers
-
-Simple operational warnings:
-
-```text
-0–7 min    Normal
-8–12 min   Attention
-12+ min    Late
-```
-
-Thresholds configurable by business.
-
-Foodics currently markets multi-station KDS workflows and processing-time reporting, while Odoo provides dedicated preparation displays and station/status workflows.
-
-We should meet the operational baseline without initially building unnecessary algorithmic kitchen optimization.
-
----
-
-# 33. Expo View
-
-For restaurants with multiple stations:
-
-```text
-Grill ──┐
-Fryer ──┼──> EXPO ──> SERVE
-Bar ────┘
-```
-
-Expo sees whether the complete order is ready.
-
-For a small restaurant this module can simply be disabled.
-
----
-
-# 34. Kitchen Printer Fallback
-
-KDS is preferred where deployed.
-
-But restaurant operations should also support configured:
-
-* kitchen printers
-* bar printers
-* receipt printers
-
-If a restaurant does not want KDS, KOT printing remains usable.
-
----
-
-# 35. Recipe Management
-
-This is one of the key product differentiators.
-
-ERPNext BOM alone should not represent every plated dish.
-
-## Restaurant Recipe
-
-Example:
-
-```text
-Chicken Burger
-
-Burger Bun       1 ea
-Chicken          120 g
-Sauce             25 g
-Lettuce            20 g
-Cheese              1 slice
-Oil                 8 ml
-```
-
----
-
-# 36. Sub-Recipes
-
-Example:
-
-```text
-Garlic Mayo
-├── Mayo
-├── Garlic
-├── Lemon
-└── Seasoning
-```
-
-Then:
-
-```text
-Burger Recipe
-└── Garlic Mayo 25 g
-```
-
-This avoids duplicating ingredients across hundreds of dishes.
-
----
-
-# 37. Recipe Yield
-
-Support prep batches:
-
-```text
-10 kg Raw Tomatoes
-        ↓
-8.1 kg Prepared Sauce
-```
-
-Yield allows actual recipe costing rather than assuming zero preparation loss.
-
----
-
-# 38. Recipe Revisions
-
-Recipe modifications should be versioned/effective-dated.
-
-If chicken changes from:
-
-```text
-120g → 135g
-```
-
-historical sales should not suddenly appear to have used the new recipe.
-
----
-
-# 39. ERP Manufacturing Boundary
-
-Use **Restaurant Recipes** for dishes prepared to order.
-
-Use **ERPNext stock/manufacturing mechanisms** where real stocked production exists.
-
-Example:
-
-```text
-Central Kitchen
-Raw ingredients
-      ↓
-50 kg Pizza Sauce Batch
-      ↓
-Stocked Prepared Item
-      ↓
-Transfer to Branches
-```
-
-That genuinely behaves like production.
-
-We should not create ERP manufacturing work orders every time someone orders a burger.
-
----
-
-# 40. Restaurant Consumption Ledger
-
-A dedicated operational consumption layer should record theoretical ingredient usage from each sold/fired item.
-
-Example:
-
-```text
-Order #1482
-Burger × 3
-        ↓
-Chicken -360g
-Buns    -3
-Sauce   -75g
-```
-
-This gives us restaurant-speed tracking without making the POS wait for heavy accounting/stock operations.
-
-ERPNext remains the authoritative physical stock/accounting engine.
-
-Consumption can be posted into ERP stock through controlled aggregated synchronization rather than creating excessive stock transactions during peak service.
-
----
-
-# 41. Inventory Management
-
-Use ERPNext for core stock capabilities wherever possible instead of rebuilding them.
-
-Core inventory covers:
-
-* raw materials
-* packaging
-* beverages
-* prepared items
-* warehouses
-* stock receipts
-* transfers
-* adjustments
-* batches
-* expiry where applicable
-* UOM conversions
-
-RestaurantOS provides the restaurant-aware layer.
-
----
-
-# 42. Automatic Recipe Consumption
-
-When a menu item sells, theoretical ingredient consumption is automatically generated.
-
-No manual stock deduction by cashier.
-
----
-
-# 43. Low Stock
-
-Branch dashboard shows:
-
-```text
-Chicken      LOW
-Cheese       LOW
-Coke         OK
-Buns         CRITICAL
-```
-
-Simple thresholds first.
-
-Predictive stock AI later.
-
----
-
-# 44. Inventory Count
-
-Store staff can conduct physical stock counts.
-
-Critical option:
-
-### Blind Count
-
-Employee enters the quantity without seeing expected quantity.
-
-This reduces manipulation.
-
-After submission:
-
-```text
-Expected: 44 kg
-Counted:  39 kg
-Variance: -5 kg
-```
-
----
-
-# 45. Waste
-
-Waste must have explicit reasons:
-
-* Spoilage
-* Expired
-* Burnt
-* Dropped
-* Preparation waste
-* Customer return
-* Quality rejection
-* Staff meal
-* Sample
-* Other authorized reason
-
-Waste affects inventory and analytics.
-
----
-
-# 46. Actual vs Theoretical
-
-This is a **core report**, not future AI.
-
-Restaurant365's Actual-vs-Theoretical model compares inventory actually used with what recipes/POS sales imply should have been used, allowing operators to identify costly variance.
-
-Our example:
-
-```text
-Chicken
-
-Theoretical usage     86.4 kg
-Actual usage          94.2 kg
-Known waste            2.1 kg
-Unexplained variance   5.7 kg
-```
-
-This immediately gives management something actionable.
-
-Possible causes:
-
-* over-portioning
-* incorrect recipes
-* receiving errors
-* counting errors
-* waste
-* theft
-
----
-
-# 47. Recipe Costing
-
-Recipe cost automatically uses ingredient cost.
-
-Example:
-
-```text
-Burger Selling Price     Rs 850
-Food Cost                Rs 274
-Food Cost %              32.2%
-Gross Contribution       Rs 576
-```
-
-If chicken cost increases, menu profitability changes automatically.
-
----
-
-# 48. Menu Engineering
-
-Simple useful report:
-
-```text
-Item            Sales   Margin   Food Cost
-
-Zinger          High    High     Good
-Pasta           High    Low      Review
-Premium Steak   Low     High     Promote
-Soup            Low     Low      Review/Remove
-```
-
-No AI required.
-
-This is basic mathematics from sales + recipes.
-
----
-
-# 49. Purchasing
-
-Do **not rebuild ERPNext Purchasing**.
-
-Use ERPNext for:
-
-* Supplier
-* Material Request
-* Purchase Order
-* Purchase Receipt
-* Purchase Invoice
-
-Restaurant UI can provide simplified entry points where appropriate.
-
----
-
-# 50. Supplier Cost History
-
-Manager should easily see:
-
-```text
-Chicken / kg
-
-Jun     620
-Jul     655
-Aug     710
-```
-
-and:
-
-```text
-+8.4% since last month
-```
-
-No AI required.
-
----
-
-# 51. Purchase Approval
-
-Purchases above configured limits can require manager/head-office authorization.
-
-Example:
-
-```text
-Branch Manager Limit:
-Rs 50,000
-
-PO:
-Rs 125,000
-
-→ Head Office Approval Required
-```
-
----
-
-# 52. Branch Transfers
-
-Use ERPNext stock transfer foundation.
-
-Restaurant-friendly workflow:
-
-```text
-DHA needs Cheese
-       ↓
-Request
-       ↓
-Central Warehouse Approves
-       ↓
-Dispatch
-       ↓
-DHA Receives
-```
-
-Both dispatch and receipt must remain traceable.
-
----
-
-# 53. Central Kitchen — Core but Controlled
-
-We **will support central kitchen**, because multi-branch restaurants commonly need it and regional competitors already treat it as a serious chain capability. Petpooja supports central kitchens, multi-stage recipes and outlet supply, while Restroworks provides central-kitchen transfer, indenting and cost tracking.
-
-But we will keep V1 sensible.
-
-## Core Central Kitchen
-
-* Central kitchen warehouse
-* Branch requisitions
-* Approval
-* Production/preparation
-* Batch/yield
-* Dispatch
-* Branch receipt
-* Cost
-* Stock traceability
-
-Not initially:
-
-* AI demand forecasting
-* automated vehicle routing
-* complex supply-chain optimization
-
----
-
-# 54. Cashier / Till Sessions
-
-Cash control is mandatory.
-
-Flow:
-
-```text
-Cashier Opens Shift
-        ↓
-Opening Cash
-        ↓
-Sales
-        ↓
-Cash In / Cash Out
-        ↓
-Closing Count
-        ↓
-Variance
-        ↓
-Manager Review
-```
-
----
-
-# 55. Blind Cash Closing
-
-Cashier enters actual drawer count first.
-
-System should not reveal expected amount beforehand where configured.
-
-After submission:
-
-```text
-Expected       Rs 84,500
-Counted        Rs 82,700
-Short          Rs 1,800
-```
-
----
-
-# 56. Cash Movements
-
-Any cash movement outside a sale requires:
-
-* type
-* amount
-* reason
-* employee
-* timestamp
-
-Examples:
-
-```text
-Petty Cash
-Supplier Emergency Payment
-Cash Deposit
-Cash Pickup
-```
-
----
-
-# 57. Void Controls
-
-No transactional hard deletion.
-
-Once an operational transaction has meaningful history:
-
-> It does not disappear.
-
-A void should retain:
-
-* original transaction
-* employee
-* reason
-* timestamp
-* approval
-* kitchen impact
-* inventory impact
-* payment impact
-
----
-
-# 58. Discounts
-
-Permissions can define:
-
-```text
-Cashier      ≤ 5%
-Supervisor   ≤ 10%
-Manager      ≤ 25%
-```
-
-Anything beyond authority requires approval.
-
----
-
-# 59. Complimentary Items
-
-Comp item requires reason.
-
-Example:
-
-```text
-Customer Complaint
-Manager Courtesy
-Promotion
-Staff Meal
-```
-
-This prevents free food silently disappearing.
-
----
-
-# 60. Refunds
-
-Every refund references:
-
-```text
-Original Payment
-Original Bill
-Refundable Amount
-Refund Reason
-Employee
-Approver
-```
-
-No detached fake refund.
-
----
-
-# 61. Loss Prevention — V1
-
-We are keeping this module because most of its value comes from good transaction design rather than heavy AI.
-
-Core controls:
-
-* no hard-delete
-* void reason
-* post-KOT void tracking
-* discount authority limits
-* comp reason
-* manager approvals
-* refund linkage
-* individual tills
-* blind cash count
-* cash variance
-* blind stock count
-* stock adjustment reasons
-* complete audit log
-* branch-level exception reporting
-
-No machine-learning fraud engine yet.
-
----
-
-# 62. Owner Exception Center
-
-Instead of making an owner read 80 reports:
-
-```text
-TODAY — DHA
-
-Cash Shortage             Rs 1,800
-Post-Kitchen Voids             3
-Large Discounts                2
-Chicken Variance             6.4%
-Critical Stockouts              1
-Late Kitchen Tickets            8
-```
-
-Rule-based.
-
-Simple.
-
-Useful.
-
----
-
-# 63. Staff Management
-
-RestaurantOS staff requirements remain intentionally small.
-
-Employee/User fields:
-
-* Name
-* User
-* Employee ID
-* Branch
-* Role
-* Active/Inactive
-* POS PIN
-* Assigned till
-* Permission level
-
----
-
-# 64. Role Model
-
-Recommended operational roles:
-
-### Owner / Group Admin
-
-Everything across permitted businesses.
-
-### Head Office Manager
-
-Brand/branch management and consolidated reporting.
-
-### Branch Manager
-
-Own branch operations.
-
-### Cashier
-
-POS, payments and till.
-
-### Waiter / Server
-
-Tables and orders.
-
-### Kitchen
-
-KDS only.
-
-### Storekeeper
-
-Inventory, count, receive, transfer.
-
-### Central Kitchen
-
-Production and dispatch.
-
-### Accountant
-
-ERPNext financial modules.
-
-The cashier does not need an ERPNext accounting dashboard.
-
----
-
-# 65. Fast POS Authentication
-
-Restaurant operations can optionally support quick staff PIN switching on registered terminals.
-
-Example:
-
-```text
-Ali
-PIN ****
-```
-
-But permissions remain server-side.
-
-A PIN must never bypass authorization rules.
-
----
-
-# 66. Accounting Architecture
-
-Restaurant operations and accounting are separate layers.
-
-```text
-Restaurant Order
-      ↓
-Kitchen / Service
-      ↓
-Check
-      ↓
-Settlement
-      ↓
-ERPNext Invoice
-      ↓
-GL / Taxes / Accounts
-```
-
-A waiter changing an open order should not be editing posted accounting entries.
-
----
-
-# 67. ERPNext Responsibilities
-
-ERPNext remains authoritative for:
-
-* General Ledger
-* Accounts
-* Taxes
-* Sales invoices
-* Purchase invoices
-* Suppliers
-* Physical stock ledger
-* Warehouses
-* Purchase orders
-* Receipts
-* Payments/accounting
-* Cost centers
-* financial statements
-
-RestaurantOS should never create competing accounting ledgers.
-
----
-
-# 68. RestaurantOS Responsibilities
-
-Custom restaurant layer owns:
-
-* open orders
-* dining sessions
-* tables
-* KOT
-* KDS
-* modifiers
-* recipes
-* theoretical usage
-* restaurant-specific cash controls
-* restaurant operational reporting
-* branch closing
-* operational audit
-
----
-
-# 69. Final Settlement
-
-When a bill is successfully settled:
-
-```text
-Restaurant Check
-       ↓
-Settlement Validation
-       ↓
-ERPNext POS/Sales Invoice
-       ↓
-Payment Allocation
-       ↓
-Fiscal Integration
-       ↓
-Receipt
-```
-
-The bridge must be idempotent so double-clicks or network retries cannot create duplicate invoices.
-
----
-
-# 70. Pakistan FBR / Electronic Invoicing
-
-This should be a **first-class integration boundary**, not hardcoded all over POS logic.
-
-FBR currently maintains a significant number of restaurant POS integrations, and its current electronic-invoicing guidance requires applicable registered persons to connect invoicing systems through an authorized/licensed integration route.
-
-Architecture:
-
-```text
-Final Invoice
-     ↓
-Fiscal Connector
-     ↓
-FBR / Licensed Integrator / PRAL
-     ↓
-Fiscal Response
-     ↓
-Invoice Number / QR / Status
-```
-
-Exact implementation must follow the client's legal status and the applicable FBR/integrator requirements at deployment time.
-
-No tax rule should be blindly hardcoded forever.
-
----
-
-# 71. Branch Closing
-
-A restaurant manager needs a simple end-of-day flow.
-
-```text
-Review Open Orders
-       ↓
-Review Tills
-       ↓
-Count Cash
-       ↓
-Review Variances
-       ↓
-Review Voids/Discounts
-       ↓
-Review Sales
-       ↓
-Close Day
-```
-
-Output:
-
-### Daily Branch Summary
-
-* Gross sales
-* Discounts
-* Net sales
-* Taxes
-* Cash
-* Cards
-* Other payments
-* Refunds
-* Voids
-* Order count
-* Average ticket
-* Cash variance
-* Waste
-* major stock variance
-
----
-
-# 72. Owner Command Center
-
-Owner dashboard should initially remain extremely understandable.
-
-## Today
-
-```text
-Net Sales            Rs 1,420,000
-Orders                       1,126
-Average Ticket           Rs 1,261
-Food Cost                    31.8%
-Waste                    Rs 11,400
-Cash Variance             Rs 1,800
-Voids                        0.7%
-Discounts                    2.1%
-```
-
----
-
-# 73. Multi-Branch View
-
-```text
-Branch        Sales      Food Cost    Cash Var
-
-DHA           540k         29.8%         0
-Gulberg       460k         32.2%       800
-Islamabad     420k         34.7%     1,000
-```
-
-Owner instantly sees which branch needs attention.
-
----
-
-# 74. Core Reports
-
-## Sales
-
-* Sales summary
-* Sales by branch
-* Sales by brand
-* Sales by hour
-* Sales by day
-* Sales by category
-* Sales by menu item
-* Sales by order type
-* Sales by payment mode
-* Sales by employee
-* average ticket
-* order count
-
-## Menu
-
-* Best sellers
-* Worst sellers
-* Menu item margin
-* Food cost %
-* Menu engineering
-
-## Kitchen
-
-* Orders prepared
-* Average preparation time
-* Late tickets
-* Station performance
-
-## Inventory
-
-* Stock on hand
-* Low stock
-* Inventory movement
-* Waste
-* Stock adjustments
-* Actual vs theoretical
-* Ingredient variance
-* Stock count variance
-* Expiring stock where tracked
-
-## Purchasing
-
-* Purchase history
-* Supplier spend
-* Supplier price trends
-* Pending PO
-* Receiving differences
-
-## Cash / Control
-
-* Till summary
-* Cash variance
-* Voids
-* Refunds
-* Discounts
-* Comps
-* suspicious/high-risk exceptions
-
-## Chain
-
-* Consolidated sales
-* Branch comparison
-* brand comparison
-* branch food cost
-* branch wastage
-* branch profitability indicators
-
----
-
-# 75. UX Architecture
-
-The entire product should **not** expose one gigantic sidebar.
-
-## Cashier
-
-```text
-POS
-Orders
-Till
-```
-
-## Waiter
-
-```text
-Tables
-Orders
-```
-
-## Kitchen
-
-```text
-KDS
-```
-
-## Storekeeper
-
-```text
-Stock
-Count
-Receive
-Transfer
-Waste
-```
-
-## Manager
-
-```text
-Live Branch
-Orders
-Kitchen
-Inventory
-Approvals
-Closing
-Reports
-```
-
-## Owner
-
-```text
-Command Center
-Branches
-Reports
-Exceptions
-```
-
-## Accountant
-
-```text
-ERPNext Accounting
-```
-
-The software may be large internally.
-
-The employee experience must remain tiny.
-
----
-
-# 76. Product Home Screen
-
-Instead of ERP module tiles, manager gets restaurant-relevant shortcuts:
-
-```text
-TODAY
-
-Sales
-Orders
-Tables
-Kitchen
-Stock
-Purchases
-Cash
-Exceptions
-Reports
-```
-
----
-
-# 77. Multi-Chain Configuration
-
-Head office can maintain corporate defaults.
-
-Example:
-
-```text
-FireBurger Corporate Menu
-          ↓
-All FireBurger Branches
-```
-
-Allowed branch overrides can include:
-
-* availability
-* price
-* local tax configuration
-* local kitchen station
-* branch stock
-
-But protected corporate recipe standards can remain centrally controlled.
-
----
-
-# 78. New Branch Setup
-
-A strong feature for chains:
-
-```text
-Create New Branch
-       ↓
-Choose Brand
-       ↓
-Copy Standard Configuration
-       ↓
-Menu
-Recipes
-Roles
-Kitchen Stations
-Tax Defaults
-       ↓
-Configure Local Warehouse
-       ↓
-Open
-```
-
-No rebuilding a restaurant from scratch every time.
-
----
-
-# 79. Brand-Level Control
-
-Head office can filter:
-
-```text
-Whole Group
-Brand A
-Brand B
-Specific Branch
-```
-
-Reports and permissions follow the same hierarchy.
-
----
-
-# 80. Basic Delivery / Phone Order
-
-We should support basic direct orders without becoming a logistics platform.
+- Main Store
+- Kitchen Store
+- Prep
+- Bar
+- Packaging
+
+Do not create a complex warehouse tree unless a restaurant actually needs it.
 
 Fields:
 
-* Customer
-* Phone
-* Address
-* branch
-* delivery/takeaway
-* requested time
-* payment mode
-* notes
+- branch
+- location code/name
+- location type
+- active
+- is default receiving location
+- is default consumption location
 
-No advanced route optimization initially.
+### `Ledgix Stock Balance`
 
----
+Unique key:
 
-# 81. API-First Integration Design
+`item + stock_location`
 
-All future channels should use the same order service.
+Stores fast current balance and optional valuation snapshot. It is a derived operational balance; the stock movement ledger remains authoritative.
 
-```text
-POS
-Waiter
-Phone
-Future Website
-Future QR
-Future Kiosk
-Future Delivery Apps
-          ↓
-     Order Engine
-          ↓
-         KDS
-          ↓
-      Inventory
-          ↓
-      Accounting
-```
+`Ledgix Item.current_stock` becomes legacy/aggregate compatibility data and must no longer be trusted as the only stock truth once location-aware inventory is enabled.
 
-One order model.
+## 5.2 Existing documents to extend
 
-Not six separate systems.
+Add branch/location snapshots to:
 
----
+- `Ledgix Sale`
+- `Ledgix Sales Return`
+- `Ledgix Purchase`
+- `Ledgix POS Shift`
+- `Ledgix Stock Movement`
+- lot/serial allocation records where applicable
 
-# 82. Reliability
+A finalized transaction must retain its branch snapshot even if branch configuration changes later.
 
-Restaurants cannot stop operating because someone double-clicked a button or Wi-Fi disappeared for five seconds.
+## 5.3 User access
 
-Core reliability requirements:
+Extend `Ledgix User Profile` with:
 
-* request idempotency
-* duplicate-payment prevention
-* duplicate-invoice prevention
-* transaction locks
-* order version checking
-* retryable integration queue
-* failed-job visibility
-* printer retry
-* reprint logging
-* recoverable POS sessions
-* recoverable KDS state
+- default branch
+- allowed branches
+- optional default terminal / stock location
+
+Use Frappe Roles + User Permissions for security. UI filtering alone is never authorization.
 
 ---
 
-# 83. Offline Strategy
+# 6. Item, Menu and Modifier Architecture
 
-Full sophisticated offline synchronization is a substantial project by itself.
+## 6.1 Keep `Ledgix Item` universal
 
-Therefore:
+Do not create separate duplicate item masters for menu products and ingredients.
 
-### Architecture
+Extend item classification with a controlled restaurant type, for example:
 
-Must be offline/retry-friendly from day one.
+- Menu Item
+- Ingredient
+- Packaging
+- Consumable
+- Prepared / Finished Stock Item
+- Retail Item
 
-### Initial Production
+An item can be sellable, stock-tracked, recipe-produced or ingredient-consumed according to explicit flags instead of assumptions based only on type.
 
-Focus on resilient short connectivity interruptions, local operational caching where practical, reliable queues and recovery.
+## 6.2 UOM conversion is mandatory
 
-### Full Extended Offline Operation
+Restaurant inventory cannot be reliable with free-text UOM only.
 
-Build/harden after the core workflow proves stable if Ledgix does not already provide sufficient offline capability.
+Introduce a canonical stock UOM plus item-specific conversion rows, e.g.:
 
-We should **not promise “complete offline mode” to clients until it has been properly stress-tested.**
+- 1 kg = 1000 g
+- 1 carton = 12 bottles
+- 1 bottle = 750 ml
 
----
+Purchasing, recipes, stock movement and costing must normalize to the stock UOM.
 
-# 84. Device Management
+## 6.3 New `Ledgix Menu`
 
-Each POS/KDS terminal can eventually be registered to:
+A menu is a presentation/availability layer, not a duplicate inventory master.
 
-* client
-* brand
-* branch
-* function
-* POS profile
+Fields should support:
 
-Example:
+- name
+- brand
+- optional branch scope
+- active dates
+- order channels: Dine In / Takeaway / Delivery
+- daypart / schedule
+- price list
+- active
 
-```text
-Terminal 03
-DHA
-Cashier POS
-```
+Examples:
 
-This reduces accidental cross-branch configuration.
+- All Day
+- Breakfast
+- Lunch
+- Delivery
+- Ramadan / seasonal menu
 
----
+## 6.4 New `Ledgix Menu Item`
 
-# 85. Audit
+Links to `Ledgix Item` and contains only menu-specific data:
 
-Critical actions must record:
+- menu
+- item
+- menu category / display section
+- display name override
+- image override if needed
+- sort order
+- availability schedule
+- allowed order channels
+- kitchen station override
+- modifier groups
+- enabled
 
-* user
-* employee
-* device
-* branch
-* timestamp
-* previous value
-* new value
-* reason where applicable
+Do not store a second tax or authoritative selling price here.
 
-Critical audit areas:
+## 6.5 Modifiers — Core, not optional
 
-* order cancellations
-* voids
-* refunds
-* discounts
-* comps
-* menu prices
-* recipes
-* stock adjustments
-* cash movements
-* manager approvals
-* branch closing
+A professional restaurant POS needs modifier logic from day one.
 
----
+New models:
 
-# 86. What We Reuse from Ledgix / ERPNext
+### `Ledgix Modifier Group`
 
-We do **not** start by throwing Ledgix away.
+Examples:
 
-During development we classify existing components into:
+- Size
+- Crust
+- Add-ons
+- Spice Level
+- Cooking Preference
+- Remove Ingredients
 
-### KEEP
+Rules:
 
-Stable generic ERP/accounting functionality.
+- minimum selection
+- maximum selection
+- required/optional
+- multi-select
+- display order
+- branch/menu scope if required
 
-### EXTEND
+### `Ledgix Modifier Option`
 
-Existing functionality that needs restaurant fields/workflows.
+Fields:
 
-### REPLACE
+- label
+- price delta
+- active
+- optional linked Ledgix Item for stock/cost effect
+- optional kitchen label
+- optional stock effect
 
-UI/workflows that fundamentally conflict with restaurant operation.
+Initial stock effects should support:
 
-### REMOVE / DEPRECATE
+- No stock effect
+- Add linked item/recipe quantity
+- Exclude a recipe ingredient
 
-Functionality specific to the previous business/product that has no value here.
+Complex substitutions can be added after the core model is stable.
 
-The highest chance of major custom work is the **restaurant operational layer**, not accounting.
+## 6.6 Availability and 86 / sold-out
 
----
+Menu availability must support:
 
-# 87. Technical Custom Domain Model
+- manual branch-level 86 switch
+- schedule/daypart availability
+- optional stock-driven warning/block
+- KDS/POS realtime update
 
-Exact DocType names can evolve during implementation, but conceptually we need:
-
-```text
-Restaurant Brand
-Restaurant Branch Configuration
-
-Menu
-Menu Section
-Modifier Group
-Modifier Option
-
-Restaurant Recipe
-Recipe Ingredient
-Recipe Revision
-
-Restaurant Floor
-Restaurant Table
-Dining Session
-
-Restaurant Order
-Order Item
-Restaurant Check
-Settlement
-
-Kitchen Station
-Kitchen Ticket
-Kitchen Ticket Item
-
-Till Session
-Cash Movement
-
-Restaurant Consumption Ledger
-Waste Event
-Stock Count Session
-
-Restaurant Approval
-Restaurant Exception
-
-Daily Branch Close
-
-Fiscal Integration Log
-External Integration Log
-```
-
-Where ERPNext already owns the correct document, we link to it rather than duplicate it.
+Do not silently hide an item without showing staff why it is unavailable.
 
 ---
 
-# 88. Core Transaction Model
+# 7. Recipe and Food-Cost Engine
 
-This distinction is critical:
+## 7.1 New `Ledgix Recipe`
 
-```text
-Operational Transaction
-        ≠
-Accounting Transaction
-```
+One active recipe version per produced/sold item for a given effective context.
 
-Operational layer:
+Fields:
 
-```text
-Restaurant Order
-Dining Session
-KOT
-Kitchen Status
-Check
-```
+- finished/menu item
+- recipe version
+- batch/yield quantity
+- output UOM
+- effective from
+- active
+- notes / preparation instructions
+- optional prep station
 
-Financial layer:
+## 7.2 `Ledgix Recipe Ingredient`
 
-```text
-Sales Invoice
-Payment
-GL
-Tax
-```
+Fields:
 
-Inventory layer:
+- ingredient item
+- quantity
+- UOM
+- normalized stock quantity
+- waste factor
+- optional/non-stock flag where justified
 
-```text
-Ingredient Consumption
-Stock Entry
-Stock Reconciliation
-Purchase Receipt
-```
+## 7.3 Costing
 
-They are connected but not collapsed into one giant document.
+Recipe costing should derive from current Ledgix ingredient valuation, not a separately maintained manual food cost.
 
----
+Expose:
 
-# 89. Development Phases
+- recipe ingredient cost
+- total recipe cost
+- cost per serving
+- selling price
+- food cost %
+- contribution margin
+- gross margin %
 
-## Phase 0 — Ledgix Technical Audit
+Historical orders/sales must snapshot the cost used at transaction time so later purchase-cost changes do not rewrite history.
 
-Before changing architecture:
+## 7.4 Ingredient consumption timing
 
-* inspect current app
-* inspect custom DocTypes
-* inspect POS
-* inspect ERPNext version
-* inspect frontend
-* inspect existing inventory
-* inspect accounting customization
-* inspect reports
-* inspect permissions
-* identify reusable components
-* identify business-specific old logic
-* create migration/refactor map
+For restaurant accuracy, ingredient consumption should be linked to **kitchen fire**, not payment time.
 
-**Deliverable:** exact KEEP / EXTEND / REPLACE / REMOVE matrix.
+Rule:
 
-No framework upgrade merely for the sake of upgrading.
+1. Item is added to an open Restaurant Order — no stock movement yet.
+2. Item is fired to kitchen — create exactly-once recipe consumption movements.
+3. Item voided before kitchen preparation — authorized reversal can restore stock.
+4. Item voided after preparation — do not pretend stock returned; record waste/comp reason.
+5. Order later settles into `Ledgix Sale` — do not consume the same recipe again.
+
+This requires explicit consumption references/idempotency on order-item/KOT level.
+
+Prepared finished goods can use a different stock policy where required; the default restaurant path is ingredient consumption by recipe.
 
 ---
 
-## Phase 1 — Restaurant Foundation
+# 8. Restaurant Operational Order Model
+
+`Ledgix Sale` is finalized financial truth. A restaurant needs a separate mutable operational object before settlement.
+
+## 8.1 New `Ledgix Table Session`
+
+Used for dine-in only.
+
+Fields:
+
+- branch
+- floor/table
+- opened at/by
+- waiter/server
+- covers
+- status Open / Closing / Closed
+- optional guest/customer
+
+A table session can contain one or more open Restaurant Orders. This makes split checks and multiple parties/checks on the same table possible without corrupting the final sale model.
+
+## 8.2 New `Ledgix Restaurant Order`
+
+Think of this as the live restaurant check.
+
+Required context:
+
+- branch
+- order number
+- order type: Dine In / Takeaway / Delivery
+- table session where applicable
+- table
+- waiter/cashier
+- customer optional
+- covers
+- opened time
+- promised/pickup time where applicable
+- status
+- pricing context
+- tax context
+- notes
+- source/device/request id
+- linked final `Ledgix Sale` after settlement
+
+Recommended operational states:
+
+- Draft
+- Open
+- In Kitchen
+- Partially Ready
+- Ready
+- Served
+- Closed
+- Voided
+
+Payment state should not be overloaded into kitchen state.
+
+## 8.3 `Ledgix Restaurant Order Item`
+
+Must preserve:
+
+- item
+- quantity
+- price snapshot
+- tax snapshot/reference
+- seat number optional
+- course optional
+- modifiers
+- kitchen station
+- item note
+- kitchen status
+- fired quantity
+- prepared quantity
+- void quantity
+- recipe/consumption reference
+- authorization metadata for protected changes
+
+## 8.4 Split checks without a duplicate billing system
+
+One Restaurant Order settles to one `Ledgix Sale`.
+
+When staff splits a check:
+
+- create sibling Restaurant Orders under the same Table Session
+- move whole items, seat items or allowed fractional quantities between orders
+- preserve original order/item lineage for audit
+- each resulting order settles independently to one Ledgix Sale
+
+Support:
+
+- split by seat
+- split by item
+- equal split where mathematically safe
+- merge/recombine before final settlement
+
+Do not mutate a submitted Ledgix Sale to achieve a split.
+
+---
+
+# 9. Floors and Tables
+
+## 9.1 New `Ledgix Floor`
+
+Fields:
+
+- branch
+- name
+- display order
+- active
+
+## 9.2 New `Ledgix Restaurant Table`
+
+Fields:
+
+- floor
+- branch
+- table number/name
+- capacity
+- shape/display metadata
+- active
+- optional position data for visual floor plan
+
+Operational states are derived from active table sessions and service state rather than manually edited permanent status fields where possible.
+
+Visible states:
+
+- Available
+- Occupied
+- Bill Requested / Closing
+- Needs Cleaning
+- Disabled
+
+`Reserved` remains available for the future reservation module but reservation management itself is HOLD.
+
+## 9.3 Table actions
+
+Core actions:
+
+- open table
+- transfer/move table
+- merge table sessions with authorization
+- split checks
+- change server
+- adjust covers
+- mark cleaning complete
+
+All material moves must be auditable.
+
+---
+
+# 10. KOT / KDS Architecture
+
+The KDS is one of the few places where a fully custom page is justified.
+
+## 10.1 New `Ledgix Kitchen Station`
+
+Examples:
+
+- Grill
+- Fry
+- Pizza
+- Cold Kitchen
+- Drinks / Bar
+- Dessert
+- Expo
+
+Configuration:
+
+- branch
+- station name/code
+- active
+- routing rules
+- ticket display priority
+- printer fallback configuration later
+
+## 10.2 KOT is immutable dispatch history
+
+Do not keep rewriting one kitchen ticket.
+
+Each fire action creates a new delta KOT containing only the kitchen-relevant change.
+
+New models:
+
+- `Ledgix KOT`
+- `Ledgix KOT Item`
+
+KOT data:
+
+- restaurant order
+- branch
+- station
+- sequence/revision
+- fired at/by
+- action type
+- status
+- source device/request id
+
+KOT item data:
+
+- source order item
+- action: Add / Void / Recall
+- quantity delta
+- modifiers snapshot
+- seat/course
+- kitchen note
+- production timestamps
+
+This prevents the classic error of reprinting/resending an entire order when only one item was added.
+
+## 10.3 KDS states
+
+Recommended item/ticket flow:
+
+- New
+- Preparing
+- Ready
+- Bumped / Completed
+
+Order-level status is derived from item/ticket state.
+
+## 10.4 KDS capabilities — Core
+
+- station-specific queues
+- all-station / expo view
+- ticket age timer
+- priority / rush marker
+- modifiers and notes highly visible
+- allergen/special instruction highlight when configured
+- bump / ready
+- recall with permission
+- course hold/fire
+- audible new-ticket alert, configurable
+- realtime POS/KDS updates
+- prep-time timestamps for analytics
+
+Frappe realtime events should be used; polling is fallback, not the primary design.
+
+## 10.5 Printing fallback
+
+KDS is primary for the modern workflow, but kitchen ticket printing can remain a configurable fallback for restaurants that require paper.
+
+Printer routing is station-based. Avoid hard-coding browser printer names into core business documents.
+
+---
+
+# 11. Restaurant POS — Custom Surface
+
+The current `ledgix_pos` page is the right architectural location but its retail interaction model should be evolved into a restaurant-native POS.
+
+Reuse existing:
+
+- Ledgix pricing services
+- shift validation
+- payment methods
+- tax engine
+- idempotent request IDs
+- customer lookup
+- final sale creation
+- returns/refund services
+- design tokens / brand system
+
+Do not blindly retain the current retail cart layout if it harms restaurant speed.
+
+## 11.1 Primary POS layout
+
+Recommended desktop/tablet shell:
+
+### Header
+
+- branch
+- terminal/shift
+- cashier/server
+- order type
+- table/check context
+- connection state
+- quick search
+
+### Main menu area
+
+- category rail/chips
+- search
+- large touch targets
+- sold-out state
+- daypart/menu state
+- item cards
+
+### Order/check area
+
+- item rows
+- modifiers
+- seat/course labels
+- notes
+- quantity actions
+- fire/hold state
+- discounts/comps with permissions
+- subtotal/tax/service charge/tip/grand total
+- primary actions
+
+## 11.2 Essential restaurant actions
+
+- Dine In / Takeaway / Delivery
+- open/select table
+- add item
+- modifier selection
+- item note
+- seat assignment optional
+- course assignment optional
+- send/fire to kitchen
+- hold/fire course
+- repeat item
+- transfer table
+- split check
+- merge/recombine check
+- multi-tender payment
+- discount with reason
+- comp with manager permission
+- void with reason and kitchen-aware stock consequence
+- reprint receipt
+- refund finalized sale through return workflow
+
+## 11.3 Manager authorization
+
+Sensitive actions must use server-side authorization and reason capture:
+
+- price override
+- large discount
+- comp
+- post-fire void
+- reopen/recall kitchen item
+- table/check merge if risky
+- refund
+- shift variance override
+
+PIN-style manager approval can be introduced as a fast UX layer, but it must resolve to an authenticated/authorized server identity.
+
+## 11.4 Service charge, gratuity and tips
+
+Support configurable:
+
+- fixed/percentage service charge
+- automatic gratuity based on branch/party size if desired
+- manual tip
+- tax treatment determined by configuration, not hard-coded
+
+All adjustments must be snapshotted on the final sale.
+
+## 11.5 Network resilience
+
+V1 does **not** promise full offline fiscal operation.
+
+Provide graceful degraded behavior:
+
+- cache recent menu/config needed for rendering
+- preserve unsent local draft state during short interruptions
+- show clear offline/reconnecting state
+- use idempotency/request IDs on mutations
+- never show an order as finally paid/fiscalized until the server confirms it
+- do not duplicate sale, KOT, payment or FBR posting after retry
+
+True multi-device offline synchronization is a separate later project.
+
+---
+
+# 12. Takeaway and Delivery
+
+## 12.1 Takeaway
+
+Core fields:
+
+- customer/contact optional
+- pickup name
+- promised time
+- order note
+- packaging implications
+
+## 12.2 Delivery
+
+V1 supports internal/manual delivery operation, not a full delivery marketplace.
+
+Fields:
+
+- customer
+- phone
+- delivery address
+- delivery instructions
+- delivery zone optional
+- delivery fee
+- promised time
+- rider optional
+- status
+
+Suggested delivery states:
+
+- New
+- Preparing
+- Ready for Dispatch
+- Out for Delivery
+- Delivered
+- Cancelled
+
+Third-party aggregators and driver apps are later integrations.
+
+---
+
+# 13. Purchasing and Inventory Operations
+
+## 13.1 Existing `Ledgix Purchase` becomes receiving truth
+
+Extend it with:
+
+- branch
+- destination stock location
+- optional purchase-order reference
+- supplier invoice/reference
+- receiving user/time
+
+Submitting a Purchase creates location-aware stock IN movements exactly once.
+
+## 13.2 Add `Ledgix Purchase Order`
+
+Use standard Frappe form/list/workflow rather than a custom purchasing dashboard.
+
+Core states:
+
+- Draft
+- Pending Approval where enabled
+- Ordered
+- Partially Received
+- Received
+- Cancelled
+
+Purchase Order does not move stock. Receiving through `Ledgix Purchase` does.
+
+## 13.3 Stock transfers
+
+Provide an atomic transfer workflow:
+
+- source location OUT
+- destination location IN
+- same transfer reference
+- no valuation gain/loss introduced by transfer
+- server transaction guarantees both sides or neither side
+
+A small `Ledgix Stock Transfer` document is justified for auditability.
+
+## 13.4 Waste
+
+Waste is an explicit stock OUT reason, not an arbitrary adjustment.
+
+Capture:
+
+- branch/location
+- item
+- quantity/UOM
+- reason
+- linked order/KOT where relevant
+- user
+- manager approval threshold where configured
+
+Common reasons:
+
+- spoilage
+- overproduction
+- post-prep void
+- staff meal
+- damaged
+- quality rejection
+
+## 13.5 Stock count
+
+Add a simple cycle/physical count workflow after location-aware stock is stable:
+
+- count sheet by location
+- expected quantity
+- counted quantity
+- variance
+- authorized adjustment on submit
+
+## 13.6 Reorder intelligence
+
+Evolve existing low-stock/inventory intelligence to use:
+
+- item + location balance
+- location reorder level
+- recent consumption
+- open purchase order quantity
+- configurable lead time later
+
+Do not put AI forecasting in V1.
+
+---
+
+# 14. Fiscal, Tax and FBR Strategy
+
+The existing FBR implementation is retained.
+
+## 14.1 Current limitation
+
+`Ledgix FBR Settings` is currently a Single doctype with one seller identity/token context. Multi-branch/multi-entity operation eventually needs scoped fiscal profiles.
+
+## 14.2 Target
+
+Introduce a branch-linked fiscal profile without breaking the existing Single settings contract.
+
+Recommended migration direction:
+
+- Existing FBR Settings remains global control/safety/default configuration during transition.
+- New `Ledgix Fiscal Profile` carries branch/legal seller identity and branch-specific credentials/config where legally required.
+- Branch links to one fiscal profile.
+- Final `Ledgix Sale` freezes resolved seller/fiscal identity.
+- Existing submission logs remain historical truth.
+
+Never rewrite historical fiscal identity because a branch profile changed.
+
+## 14.3 Restaurant order vs FBR
+
+Open Restaurant Order/KOT activity is not fiscal posting.
+
+FBR submission remains attached to finalized `Ledgix Sale` after settlement according to configured submission rules.
+
+---
+
+# 15. Workspace and UI Surface Map
+
+The product should have very few custom pages.
+
+## 15.1 Custom pages — justified
+
+### 1. Restaurant POS
+
+High-frequency touch workflow; custom page required.
+
+### 2. KDS / Kitchen
+
+Realtime operational board; custom page required.
+
+### 3. Tax & FBR Center
+
+Keep current custom center because it coordinates multiple compliance workflows.
+
+### 4. Operations / Owner Dashboard
+
+One focused management surface is justified if it combines live restaurant metrics and exceptions that would otherwise require many reports.
+
+Do not create separate custom centers for every module.
+
+## 15.2 Prefer native Frappe forms/lists for
+
+- Restaurant Brand
+- Branch
+- Stock Location
+- Items
+- Categories
+- Menus
+- Modifier Groups
+- Recipes
+- Kitchen Stations
+- Floors
+- Tables
+- Customers
+- Suppliers
+- Purchase Orders
+- Purchases / Receipts
+- Stock Transfers
+- Waste entries
+- Payment Methods
+- Price Lists
+- Item Prices
+- User Profiles
+- fiscal configuration
+
+These forms can be carefully structured with sections, columns, sensible defaults and short field sets. Do not replace them with custom pages just for appearance.
+
+## 15.3 Workspace target
+
+Restaurant workspace sections:
+
+### Service
+
+- Restaurant POS
+- Tables / Floor
+- Open Orders
+- KDS
+- Shifts
+
+### Menu
+
+- Menus
+- Items
+- Categories
+- Modifier Groups
+- Recipes
+- Kitchen Stations
+
+### Inventory & Buying
+
+- Current Stock
+- Stock Locations
+- Stock Transfers
+- Waste
+- Purchase Orders
+- Purchases / Receiving
+- Suppliers
+- Inventory Intelligence
+
+### Customers & Finance
+
+- Customers
+- Payments
+- Returns
+- Payment Methods
+- Price Lists
+
+### Reports
+
+- Sales
+- Product Mix
+- Kitchen Performance
+- Table/Cover Performance
+- Food Cost / Margin
+- Stock / Waste
+- Purchases
+- Shift/Cash
+
+### Tax & Compliance
+
+- Tax & FBR Center
+- Tax Profiles
+- FBR Logs
+- Fiscal Profiles
+
+### Administration
+
+- Restaurant Brands
+- Branches
+- User Profiles
+- Brand Settings
+
+Role visibility should remove sections users do not need.
+
+---
+
+# 16. Visual / Interaction System — “Apple-style”, not imitation
+
+“Apple-style” means discipline, not copying Apple UI.
+
+## 16.1 Principles
+
+- one clear primary action per state
+- minimum chrome
+- no decorative dashboards full of colored cards
+- generous whitespace
+- typography before borders
+- subtle elevation only where it conveys hierarchy
+- neutral surfaces with restrained Ledgix accent color
+- consistent 8px spacing rhythm
+- minimum ~44px touch targets on POS/KDS controls
+- clear selected/focused states
+- no tiny inline actions for high-frequency touch workflows
+- destructive actions separated and confirmed appropriately
+- motion only to explain state change, not decorate
+
+## 16.2 Frappe integration
+
+Back-office pages keep the recognizable Frappe shell.
+
+POS and KDS may use immersive full-width content inside Frappe, but must retain predictable navigation/session behavior and must not build a second application shell/sidebar.
+
+## 16.3 Responsive targets
+
+Primary:
+
+- 1920×1080 cashier/KDS displays
+- 1366×768 common POS terminals
+- 10–13 inch tablets
+
+Secondary:
+
+- manager laptop
+- mobile manager read-only/quick actions later
+
+Never make the primary POS depend on hover.
+
+---
+
+# 17. Roles and Permissions
+
+Retain existing technical roles for compatibility and introduce restaurant-role profiles deliberately.
+
+Recommended role set:
+
+- Ledgix Admin / Restaurant Admin
+- Restaurant Owner
+- Branch Manager
+- Cashier
+- Waiter / Server
+- Kitchen User
+- Kitchen Manager / Expo
+- Store / Inventory User
+- Purchase User
+- Back Office / Accountant
+
+Do not create custom authentication.
+
+Server permissions must enforce:
+
+- allowed branch
+- allowed actions
+- submitted-document restrictions
+- manager-only exceptions
+- kitchen-station scope if enabled
+- cost/margin visibility
+- FBR credential/config visibility
+
+Cashier and waiter users should not automatically see ingredient cost, business margin or sensitive tax credentials.
+
+---
+
+# 18. Reporting and Management Intelligence
+
+The current inventory intelligence work is retained and branch-enabled.
+
+## 18.1 Owner / manager core KPIs
+
+- net sales
+- order count
+- covers
+- average check
+- sales by order channel
+- sales by branch
+- payment mix
+- discount amount/rate
+- comp amount/rate
+- voids/refunds
+- gross margin
+- food cost %
+- waste cost
+- top/bottom menu items
+- product mix
+- table turn time
+- average prep time
+- KDS late-ticket rate
+- shift variance
+
+## 18.2 Reports
+
+### Restaurant sales
+
+- by branch
+- order type
+- menu/category/item
+- waiter/cashier
+- hour/day/daypart
+- payment method
+
+### Kitchen performance
+
+- average fire-to-ready time
+- station throughput
+- late tickets
+- recall/void rate
+- peak periods
+
+### Table performance
+
+- covers
+- average check per cover
+- table turns
+- average session duration
+
+### Menu engineering
+
+- quantity sold
+- revenue
+- contribution margin
+- food cost %
+- popularity vs margin matrix
+
+### Inventory
+
+- stock by branch/location
+- consumption
+- variance
+- waste
+- stock movement
+- low stock
+- reorder suggestions
+
+Reports should use Frappe report infrastructure unless a visual combined dashboard provides substantially better decision-making.
+
+---
+
+# 19. Core Market-Level Feature Boundary
+
+## 19.1 Must ship in the main restaurant product
+
+- single and multi-branch foundation
+- branch-scoped users
+- dine-in / takeaway / delivery order types
+- floor/table management
+- open checks
+- seat tracking
+- courses + hold/fire
+- menu/daypart/channel availability
+- modifiers
+- 86/sold-out
+- KOT delta dispatch
+- multi-station KDS
+- expo view
+- split checks
+- table/check transfer/merge
+- multi-tender payment
+- discounts/comps/void reasons and permissions
+- shifts/cash control
+- thermal receipt
+- tax/FBR integration
+- ingredient recipes
+- food costing
+- branch/location inventory
+- purchase receiving
+- purchase orders
+- stock transfer
+- waste
+- core restaurant reports
+- owner/manager operating dashboard
+
+## 19.2 Phase 1.1 / after stable core
+
+- stock count/cycle count UI
+- advanced promotions / combo rules
+- automatic gratuity rules
+- QR customer menu
+- printer routing service
+- richer delivery zones/rider workflow
+- menu bulk editor
+- central chain menu publishing with branch overrides
+- advanced recipe substitutions
+- advanced forecast/reorder formulas
+
+## 19.3 HOLD — do not build now
+
+- Reservations
+- Waitlist
+- Guest CRM suite
+- Loyalty program
+- Gift cards
+- customer mobile app
+- online ordering storefront
+- third-party delivery aggregators
+- payroll / payslips
+- HR suite
+- AI recommendations
+- AI forecasting
+- dynamic pricing
+- full offline multi-device synchronization
+- enterprise franchise royalties
+- central kitchen manufacturing/MRP
+- complex commissary replenishment
+- ERPNext general-ledger integration
+
+These are valid future modules but are not required to make V1 a professional restaurant operating system.
+
+---
+
+# 20. Migration / Compatibility Rules
+
+The restaurant conversion must be additive first.
+
+## 20.1 Do not delete working retail code during foundation phases
+
+Before removal, prove that:
+
+- no route imports it
+- no fixture references it
+- no patch references it
+- no report/print format depends on it
+- no existing tests require it
+- replacement behavior is tested
+
+The old plan contained delete lists for paths from previous Ledgix UI generations. Those lists are obsolete and must **not** be executed blindly against the current repository.
+
+## 20.2 Preserve transaction history
+
+Existing Ledgix Sale, Payment, Purchase, Return and Stock Movement records remain valid.
+
+Branch/location migration requires explicit defaults:
+
+- bootstrap one default Restaurant Brand
+- bootstrap one default Branch
+- bootstrap one default Stock Location
+- backfill existing transactions to that branch/location only where semantics are safe
+- log migration counts and ambiguous rows
+
+Migration patches must be idempotent.
+
+## 20.3 No direct data mutation from UI
+
+All important mutations go through server services/controllers with:
+
+- permission checks
+- state validation
+- idempotency where retryable
+- audit metadata
+- database transaction boundaries
+
+---
+
+# 21. Implementation Roadmap
+
+Each phase must end with migration + automated tests + smoke test before the next phase starts.
+
+## Phase 0 — Baseline Lock
+
+Current baseline:
+
+- Frappe v15
+- `ledgix_saas` installed
+- clean site migration
+- existing Ledgix transaction engine intact
+
+Tasks:
+
+- snapshot current tests
+- document current routes/pages/DocTypes
+- fix packaging metadata/version mismatch
+- update product description/visible branding to Restaurant without renaming technical package
+- establish test factory helpers for branch/location
+
+**Gate:** current Ledgix tests pass before schema work.
+
+## Phase 1 — Branch + Location Foundation
 
 Build:
 
-* restaurant settings
-* brand
-* branch configuration
-* branch/warehouse/cost-center mapping
-* employee branch/role mapping
-* permission model
-* menu structure
-* modifiers
-* variants
-* branch pricing
-* availability
+- Restaurant Brand
+- Branch
+- Stock Location
+- Stock Balance
+- branch access on User Profile
+- branch/location fields on core transactions
+- location-aware stock service
+- location-aware low stock/inventory intelligence
+- bootstrap/backfill patch
 
-**Result:** system understands restaurant organization and menus.
+Refactor `Ledgix Item.current_stock` away from being the sole truth.
 
----
+**Gate:** two branches can hold different quantities for the same item with no leakage.
 
-## Phase 2 — Restaurant POS & Dining
+## Phase 2 — Item/UOM/Menu/Modifier Foundation
 
 Build:
 
-* restaurant order engine
-* counter POS
-* takeaway
-* basic delivery/phone
-* floor
-* tables
-* dining sessions
-* waiter assignment
-* modifiers
-* table transfer
-* table merge
-* courses
-* bill/check engine
-* split bills
-* mixed payments
-* service charges/tips
+- item restaurant classification
+- stock UOM + conversions
+- Menu
+- Menu Item
+- Modifier Group
+- Modifier Option
+- menu schedule/daypart/channel rules
+- branch 86 state
+- branch-aware pricing resolution
 
-**Result:** restaurant can serve customers end-to-end.
+**Gate:** same item can be available/priced differently by configured branch/menu context without duplicating the item master.
 
----
-
-## Phase 3 — Kitchen
+## Phase 3 — Recipe + Food Cost
 
 Build:
 
-* KOT
-* delta KOT
-* cancellation ticket
-* kitchen routing
-* kitchen stations
-* KDS
-* timers
-* status workflow
-* expo
-* printers
+- Recipe
+- Recipe Ingredient
+- conversion-aware recipe quantities
+- recipe cost calculation
+- food cost/margin views
+- version/effective-date rules
 
-**Result:** front-of-house and kitchen operate as one system.
+No kitchen stock consumption yet until the order/KOT idempotency model exists.
 
----
+**Gate:** recipe cost reconciles to ingredient valuation and UOM conversions.
 
-## Phase 4 — Recipes & Inventory
+## Phase 4 — Floors, Tables and Operational Orders
 
 Build:
 
-* recipes
-* sub-recipes
-* yield
-* recipe revisions
-* consumption ledger
-* food cost
-* stock visibility
-* stock counts
-* waste
-* theoretical usage
-* actual vs theoretical
-* low stock
+- Floor
+- Restaurant Table
+- Table Session
+- Restaurant Order
+- Restaurant Order Item
+- audit events
+- seat/course fields
+- split/merge/move server services
 
-**Result:** owner can see where food and margin are going.
+**Gate:** dine-in checks can remain open and mutate safely without creating premature finalized sales.
 
----
-
-## Phase 5 — Purchasing & Central Kitchen
-
-Integrate/extend:
-
-* suppliers
-* purchase requests
-* purchase orders
-* receiving
-* branch transfers
-* requisitions
-* central kitchen production
-* dispatch/receipt
-* supplier cost analysis
-
-**Result:** restaurant supply chain becomes connected.
-
----
-
-## Phase 6 — Money Control & Accounting
-
-Build/integrate:
-
-* till sessions
-* cash movements
-* blind closing
-* void controls
-* discount authority
-* comps
-* refunds
-* manager approvals
-* ERP invoice bridge
-* settlement reconciliation
-* fiscal integration architecture
-* branch closing
-
-**Result:** every rupee becomes traceable.
-
----
-
-## Phase 7 — Dashboards & Management
+## Phase 5 — KOT + KDS + Ingredient Consumption
 
 Build:
 
-* live branch dashboard
-* owner command center
-* sales reporting
-* food-cost reporting
-* menu engineering
-* kitchen performance
-* stock variance
-* cash variance
-* exception center
-* branch comparison
-* brand/group reports
+- Kitchen Station
+- KOT/KOT Item
+- routing
+- delta fire model
+- KDS custom page
+- expo view
+- realtime events
+- prep timers
+- exactly-once recipe consumption
+- pre-prep reversal vs post-prep waste behavior
 
-**Result:** management understands the business without digging through ERP reports.
+**Gate:** adding one item to an already-fired order creates only one new kitchen delta and exactly one stock consumption event.
+
+## Phase 6 — Restaurant POS Rebuild
+
+Evolve `ledgix_pos` using existing transaction services.
+
+Build:
+
+- order-type workflow
+- table/check workflow
+- menu + modifiers
+- seat/course interaction
+- fire/hold
+- split/merge
+- service charge/tip
+- discount/comp/void approvals
+- settlement → exactly one Ledgix Sale per settled Restaurant Order
+- multi-tender payment
+
+**Gate:** full dine-in/takeaway/delivery golden paths pass.
+
+## Phase 7 — Purchasing + Inventory Operations
+
+Build/evolve:
+
+- branch receiving
+- Purchase Order
+- partial receiving
+- Stock Transfer
+- Waste
+- location-aware reorder
+- stock count after base workflows are stable
+
+**Gate:** purchase, transfer, recipe consumption, waste, return and stock count reconcile to the stock movement ledger.
+
+## Phase 8 — Fiscal + Branch Compliance
+
+Build:
+
+- branch fiscal profile architecture
+- FBR resolution by branch
+- receipt/invoice branch identity
+- FBR sandbox regression tests
+- correction/refund behavior with Restaurant sales
+
+**Gate:** finalized restaurant sales preserve correct branch seller identity and existing FBR safety controls.
+
+## Phase 9 — Reports + Owner Operations
+
+Build:
+
+- restaurant Sales report dimensions
+- Kitchen Performance
+- Table/Cover Performance
+- Menu Engineering
+- Food Cost / Waste
+- shift/cash exceptions
+- branch/chain filters
+- one restrained management dashboard
+
+**Gate:** dashboard numbers reconcile to source reports/documents.
+
+## Phase 10 — UX Polish + Hardware + Performance
+
+- responsive POS/KDS
+- keyboard shortcuts
+- touch ergonomics
+- loading/empty/error states
+- reconnect state
+- thermal print polish
+- optional kitchen print fallback
+- realistic high-volume fixture data
+- query/index review
+
+**Gate:** common order operations remain fast with realistic data volume.
+
+## Phase 11 — Security / Regression / Go-Live
+
+- role matrix tests
+- branch isolation tests
+- duplicate-submit tests
+- concurrent stock tests
+- KOT idempotency tests
+- payment/return tests
+- FBR sandbox tests
+- migration rerun/idempotency tests
+- backup/restore test
+- production smoke checklist
 
 ---
 
-## Phase 8 — Production Hardening
+# 22. Golden-Path Acceptance Flows
 
-Before commercial rollout:
-
-* concurrency tests
-* peak-order testing
-* POS failure recovery
-* integration retry
-* printer recovery
-* permission testing
-* audit testing
-* stock/accounting reconciliation
-* security review
-* backup/restore testing
-* branch closure tests
-* network interruption tests
-* performance optimization
-
-**Result:** product becomes something we can confidently install in a real restaurant.
-
----
-
-# 90. Phase 2 Product Expansion — After Core Stability
-
-Only after V1 is complete and stable:
+## 22.1 Dine-in
 
 ```text
-QR Ordering
-Online Ordering Website
-Self-Service Kiosk
-Delivery Aggregator Connectors
-Loyalty
-Gift Cards
-Advanced CRM
-WhatsApp/SMS
-Reservations
-Waitlist
-Advanced Employee Scheduling
-Frappe HR integration
-Advanced QA / Food Safety
-Deeper Offline Mode
-Customer Mobile App
+Open Shift
+→ Select Branch/Floor/Table
+→ Open Table Session
+→ Add Check
+→ Add Items + Modifiers + Seats/Courses
+→ Fire KOT
+→ Kitchen Stations Prepare
+→ Expo Ready
+→ Add second round as delta KOT
+→ Split/merge check if required
+→ Settle with one or more payment methods
+→ Create Ledgix Sale
+→ FBR according to branch policy
+→ Print Receipt
+→ Close Check/Table Session
 ```
 
-These plug into the existing architecture.
-
-They do not require rebuilding the core.
-
----
-
-# 91. Future AI Layer
-
-After enough production data:
+## 22.2 Takeaway
 
 ```text
-Sales Forecasting
-        ↓
-Prep Recommendation
-        ↓
-Purchase Recommendation
-        ↓
-Stockout Prediction
+Open Shift
+→ New Takeaway Order
+→ Add Menu Items + Modifiers
+→ Set Pickup Name/Time
+→ Fire Kitchen
+→ Ready
+→ Settle
+→ Ledgix Sale + Receipt/FBR
 ```
 
-and:
+## 22.3 Delivery
 
 ```text
-Transactions
-     ↓
-Anomaly Detection
-     ↓
-Manager Review
+New Delivery Order
+→ Customer/Address/Contact
+→ Delivery Fee/Promise Time
+→ Fire Kitchen
+→ Ready for Dispatch
+→ Out for Delivery
+→ Settle according to configured payment flow
+→ Delivered
 ```
 
-and:
+## 22.4 Post-fire void
 
 ```text
-Owner:
-"What went wrong yesterday?"
-
-AI:
-"DHA food cost increased 3.2%.
-Chicken usage was 7.4 kg above theoretical.
-Two large voids occurred after KOT."
+Item Fired
+→ Staff requests void
+→ Manager authorization + reason
+→ Kitchen delta VOID
+→ If not prepared: reverse recipe consumption
+→ If prepared: create waste/comp consequence
+→ Audit retained
 ```
 
-AI interprets the system.
-
-It does not replace the system.
-
----
-
-# 92. Competitive Position
-
-Our target is not to clone one competitor.
-
-We take the strongest practical lessons from several categories.
-
-### Foodics
-
-Strong integrated restaurant operations, inventory, KDS, approvals and enterprise multi-branch capabilities.
-
-### Toast
-
-Excellent unified restaurant commerce approach across dine-in, takeout, delivery, inventory/menu and multi-location management.
-
-### Square Restaurants
-
-Strong emphasis on simple restaurant UX, floor management, kitchen routing and accessible staff workflows.
-
-### Petpooja
-
-Strong regional fit around recipes, inventory, central kitchens, multi-outlet operations and practical restaurant workflows.
-
-### Restroworks
-
-Good chain/back-office focus through recipe, supply-chain, inventory and central-kitchen capabilities.
-
-### Restaurant365
-
-Particularly strong benchmark for recipe costing and Actual-vs-Theoretical food-cost analysis.
-
-### Odoo
-
-Good benchmark for basic floor/table management, transfers/merges, restaurant ordering and preparation displays.
-
----
-
-# 93. Ledgix Restaurant's Differentiation
-
-The intended USP becomes:
-
-## 1. One System From Order to Accounts
+## 22.5 Split bill
 
 ```text
-Order
-Kitchen
-Inventory
-Cash
-Tax
-Accounting
-Reporting
+One open table check
+→ Split by seat/item/equal rule
+→ Sibling Restaurant Orders created
+→ Original lineage retained
+→ Each check settled independently
+→ One Ledgix Sale per settled check
 ```
 
-No disconnected spreadsheets.
+---
+
+# 23. Non-Negotiable Engineering Rules
+
+1. **One source of truth per concept.**
+2. **No second stock engine.**
+3. **No second payment engine.**
+4. **No ERPNext dependency merely to avoid designing a small missing restaurant model.**
+5. **No custom page when a native Frappe form/list is better.**
+6. **POS/KDS state changes are server-authoritative.**
+7. **Every retryable mutation is idempotent.**
+8. **Every branch-scoped API enforces branch authorization server-side.**
+9. **Submitted financial/fiscal history is immutable except through explicit correction/refund flows.**
+10. **Kitchen fire and ingredient consumption cannot double-run.**
+11. **Post-prep voids create operational truth, not fake stock returns.**
+12. **Historical price/tax/cost/fiscal snapshots never depend on current master data.**
+13. **Migrations are additive and rerunnable before destructive cleanup.**
+14. **No feature is considered done without tests for its failure/duplicate path.**
+15. **UI simplicity is a product requirement, not a final styling task.**
 
 ---
 
-## 2. One Product for Any Size Restaurant
+# 24. Testing Strategy
 
-Single restaurant does not see unnecessary enterprise complexity.
+## 24.1 Unit/domain tests
 
-A growing customer does not need to migrate systems when opening branch number two.
+- branch/location stock calculations
+- UOM conversion
+- pricing context
+- recipe cost
+- modifier validation
+- KOT deltas
+- recipe consumption idempotency
+- table/check split logic
+- discounts/authorization
+- payment totals
+- tax/FBR payload resolution
 
----
+## 24.2 Integration tests
 
-## 3. Food-Cost Control Built In
+- purchase → stock location
+- KOT fire → recipe stock OUT
+- post-fire void → reversal/waste
+- restaurant settlement → Ledgix Sale
+- sale → payments → FBR
+- return → refund → stock according to policy
+- cross-branch permission isolation
 
-Recipes are not decorative.
+## 24.3 Concurrency / integrity
 
-They drive:
+Test:
 
-* ingredient usage
-* costs
-* margins
-* inventory
-* variance analysis
+- two terminals selling same constrained stock
+- duplicate create-sale request ID
+- duplicate KOT fire
+- simultaneous table edits
+- duplicate payment callback/retry
+- transfer atomicity
+- final-sale retry after transient network failure
 
----
+## 24.4 UI smoke
 
-## 4. Strong Profit-Leakage Controls
+At minimum:
 
-Void, discount, refund, waste, cash and stock exceptions are visible by design.
+- cashier POS
+- waiter/table flow
+- KDS station
+- expo
+- branch manager
+- store user
+- admin/FBR
 
----
-
-## 5. ERP-Grade Financial Backbone
-
-Restaurant staff get simple software.
-
-Finance gets proper ERPNext accounting underneath.
-
----
-
-## 6. Multi-Branch Without Complexity
-
-Head office controls standards.
-
-Branches operate independently within those standards.
-
----
-
-## 7. Simple User Experience
-
-Complexity is hidden based on role.
-
-This may ultimately be the most important differentiator.
-
----
-
-# 94. Client-Friendly Explanation
-
-**Ledgix Restaurant Management & POS is a unified restaurant operating system designed for a single restaurant, growing multi-branch business or multi-brand restaurant group.**
-
-It combines fast restaurant billing and table service with kitchen operations, recipes, inventory, purchasing, central-kitchen workflows, cash control, accounting and management reporting.
-
-Instead of managing separate software for the POS, kitchen, stock, purchasing and accounts, Ledgix connects the complete flow:
-
-```text
-Customer Order
-      ↓
-Kitchen
-      ↓
-Ingredient Usage
-      ↓
-Payment
-      ↓
-Stock
-      ↓
-Accounting
-      ↓
-Management Reporting
-```
-
-The system remains simple for employees while giving management much stronger control over sales, stock, food cost, cash and branch performance.
+Test realistic 1366×768 and tablet layouts, not only large desktop screens.
 
 ---
 
-# 95. Final Locked Product Scope
+# 25. Definition of Done for Restaurant V1
 
-## Restaurant Operations
+V1 is not complete because many DocTypes exist. It is complete when a real restaurant can run a service shift without falling back to spreadsheets for the core flow.
 
-**YES**
+The release must prove:
 
-* POS
-* Dine-in
-* Takeaway
-* Basic delivery/phone
-* Tables
-* KOT
-* KDS
-* Split bills
-* Mixed payments
-
-## Menu
-
-**YES**
-
-* Categories
-* Variants
-* Modifiers
-* Combos
-* Multiple menus
-* Branch prices
-* Availability
-
-## Kitchen
-
-**YES**
-
-* Stations
-* KOT
-* Delta KOT
-* KDS
-* Timers
-* Courses
-* Expo
-* Print fallback
-
-## Food Cost / Inventory
-
-**YES**
-
-* Recipes
-* Sub-recipes
-* Yields
-* Consumption
-* Counts
-* Waste
-* Variance
-* Actual vs theoretical
-* Food cost
-* Menu engineering
-
-## Procurement
-
-**YES**
-
-* Suppliers
-* PO
-* Receiving
-* Transfers
-
-primarily through ERPNext.
-
-## Central Kitchen
-
-**YES — sensible V1**
-
-* Requisition
-* Production
-* Transfer
-* Dispatch
-* Receipt
-
-## Cash & Control
-
-**YES**
-
-* tills
-* cash count
-* variance
-* refunds
-* voids
-* discounts
-* approvals
-* audit
-
-## Employees
-
-**BASIC ONLY**
-
-* employees
-* roles
-* branches
-* permissions
-* POS access
-
-## Payroll / Payslip
-
-**NOT CORE**
-
-Optional Frappe HR later.
-
-## CRM
-
-**BASIC CUSTOMER RECORD ONLY**
-
-Advanced CRM later.
-
-## Reservation / Waitlist
-
-**HOLD**
-
-## Loyalty
-
-**LATER**
-
-## QR / Kiosk
-
-**LATER**
-
-## Aggregators
-
-**LATER**
-
-## AI
-
-**AFTER PRODUCTION DATA**
+- branch/user isolation works
+- menus/modifiers are fast to operate
+- tables and open checks are reliable
+- KOT/KDS never duplicates kitchen work
+- kitchen timing is visible
+- recipe inventory reconciles
+- split checks settle correctly
+- payments/shifts reconcile
+- refunds/voids are controlled and auditable
+- tax/FBR remains safe
+- receiving/transfers/waste reconcile stock
+- management reports reconcile to transactions
+- staff only see the complexity relevant to their job
+- the POS remains calm and fast during peak service
 
 ---
 
-# 96. Product Rule Going Forward
+# 26. Final Product Direction
 
-From this point onward, every proposed feature should pass one test:
+The correct build is **not** “ERPNext Restaurant with a prettier POS” and it is **not** “Retail Ledgix with table numbers added.”
 
-> **Does this feature materially help a restaurant sell faster, operate better, control money/stock, or understand performance?**
+The correct product is:
 
-If **yes**, we consider it.
+> **Ledgix Restaurant = the existing Ledgix transaction/compliance engine + a restaurant-native operational layer + Frappe-native back office.**
 
-If it merely sounds impressive in a sales presentation:
+The current Ledgix work is valuable and remains underneath the product. The restaurant build should concentrate new code where the retail engine genuinely has no equivalent: branches/locations, menus/modifiers, recipes, tables/open checks, KOT/KDS and restaurant-specific operating analytics.
 
-> **not now.**
-
----
-
-# 97. Architecture Rule Going Forward
-
-We build **modularly**, not through one massive rewrite.
-
-```text
-Ledgix Foundation
-      ↓
-Restaurant Core
-      ↓
-POS
-      ↓
-Kitchen
-      ↓
-Recipes / Inventory
-      ↓
-Purchasing / Central Kitchen
-      ↓
-Cash / Accounting
-      ↓
-Analytics
-      ↓
-Production Hardening
-      ↓
-Optional Extensions
-      ↓
-AI
-```
-
-Each completed module remains testable before the next one is layered on.
-
----
-
-# 98. Final Product Definition
-
-The final target is **not**:
-
-> “ERPNext with a restaurant POS page.”
-
-And it is also **not**:
-
-> “An enormous enterprise suite containing every imaginable hospitality feature.”
-
-The target is:
-
-> **A focused Restaurant Management & POS platform that is easy enough for a small restaurant, powerful enough for a multi-branch operator, and architected strongly enough to grow into a multi-brand restaurant chain platform without rebuilding its core.**
-
-That is the baseline architecture to lock.
+That produces a system that can start cleanly for one restaurant, scale to several outlets without redesigning core truth, and eventually support a larger chain without making the first customer operate an enterprise ERP.
