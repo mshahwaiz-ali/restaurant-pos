@@ -10,8 +10,11 @@ class LedgixPOSShift(Document):
 
     def before_insert(self):
         self.set_opening_details()
+        self.apply_operating_context()
 
     def validate(self):
+        self.apply_operating_context()
+        self.validate_context_immutable()
         self.calculate_shift_summary()
         self.calculate_expected_cash()
         self.calculate_variance()
@@ -33,6 +36,31 @@ class LedgixPOSShift(Document):
 
     def on_cancel(self):
         self.status = "Cancelled"
+
+    def apply_operating_context(self):
+        from ledgix_saas.services.organization import resolve_branch_location
+
+        self.branch, self.stock_location = resolve_branch_location(
+            getattr(self, "branch", None),
+            getattr(self, "stock_location", None),
+            purpose="consumption",
+        )
+
+    def validate_context_immutable(self):
+        if self.is_new() or not self.name:
+            return
+        previous = frappe.db.get_value(
+            "Ledgix POS Shift",
+            self.name,
+            ["branch", "stock_location"],
+            as_dict=True,
+        )
+        if not previous:
+            return
+        if previous.branch and self.branch != previous.branch:
+            frappe.throw("POS Shift Branch cannot be changed after the shift is opened.")
+        if previous.stock_location and self.stock_location != previous.stock_location:
+            frappe.throw("POS Shift Stock Location cannot be changed after the shift is opened.")
 
     # ============================================================
     # OPENING SHIFT
