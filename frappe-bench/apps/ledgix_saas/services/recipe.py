@@ -40,6 +40,8 @@ def build_recipe_snapshot(item=None, recipe=None, transaction_date=None):
 		recipe_doc = get_active_recipe(item, transaction_date)
 	if not recipe_doc:
 		return None
+	if item and recipe_doc.finished_item != item:
+		frappe.throw(f"Recipe {recipe_doc.name} does not belong to item {item}.")
 
 	ingredients = []
 	for row in recipe_doc.ingredients:
@@ -72,8 +74,13 @@ def build_recipe_snapshot(item=None, recipe=None, transaction_date=None):
 	}
 
 
-def build_consumption_plan(item, order_quantity=1, modifier_options=None, transaction_date=None):
+def build_consumption_plan(item, order_quantity=1, modifier_options=None, transaction_date=None, recipe=None):
 	"""Build, but do not post, the stock plan for a fired restaurant item.
+
+	When ``recipe`` is supplied it is the historical recipe snapshot reference
+	captured by the Restaurant Order Item. This prevents a later recipe master
+	change from silently changing the ingredients consumed by an already-open
+	check.
 
 	Quantities are returned in each ingredient's canonical Stock UOM. The caller
 	must snapshot this plan on the operational order/KOT before posting movements;
@@ -84,7 +91,7 @@ def build_consumption_plan(item, order_quantity=1, modifier_options=None, transa
 	if order_quantity <= 0:
 		frappe.throw("Order quantity must be greater than zero.")
 
-	snapshot = build_recipe_snapshot(item=item, transaction_date=transaction_date)
+	snapshot = build_recipe_snapshot(item=item, recipe=recipe, transaction_date=transaction_date)
 	if not snapshot:
 		return {
 			"recipe": None,
