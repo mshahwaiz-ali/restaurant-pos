@@ -10,7 +10,7 @@ from ledgix_saas.services.stock import _post_movement
 UNSUPPORTED_RESTAURANT_TRACKING = {"Lot Based", "Serial Based"}
 
 
-def get_standard_inventory_item(item):
+def get_standard_inventory_item(item, workflow="transfer/waste"):
 	row = frappe.db.get_value(
 		"Ledgix Item",
 		item,
@@ -23,7 +23,7 @@ def get_standard_inventory_item(item):
 		frappe.throw(f"Item {row.item_name or item} is not stock tracked.")
 	if (row.tracking_type or "Normal") in UNSUPPORTED_RESTAURANT_TRACKING:
 		frappe.throw(
-			f"{row.tracking_type} item {row.item_name or item} requires identity-preserving lot/serial handling and cannot use the generic Restaurant V1 transfer/waste workflow."
+			f"{row.tracking_type} item {row.item_name or item} requires identity-preserving lot/serial handling and cannot use the generic Restaurant V1 {workflow} workflow."
 		)
 	return row
 
@@ -147,3 +147,65 @@ def cancel_inventory_waste(waste):
 	)
 	for movement_name in movements:
 		frappe.get_doc("Ledgix Stock Movement", movement_name).cancel()
+
+
+def post_stock_count(stock_count):
+	"""Set counted location balances through auditable ADJUSTMENT movements."""
+	branch, stock_location = resolve_branch_location(
+		stock_count.branch,
+		stock_count.stock_location,
+	)
+	movement_meta = frappe.get_meta("Ledgix Stock Movement")
+	if not movement_meta.has_field("previous_quantity"):
+		frappe.throw("Stock Count requires the Stock Movement previous-quantity snapshot field. Run site migration first.")
+
+	total_abs_variance = 0.0
+	total_variance_value = 0.0
+	for row in stock_count.items:
+		item = get_standard_inventory_item(row.item, workflow="stock count")
+		counted_qty = flt(row.counted_stock_quantity, 6)
+		if counted_qty < 0:
+			frappe.throw(f"Counted stock quantity for {row.item} cannot be negative.")
+
+		movement_name = _post_movement(
+			item=item.name,
+			quantity=counted_qty,
+			movement_type="ADJUSTMENT",
+			reference_doctype="Ledgix Stock Count",
+			reference_name=stock_count.name,
+			source="Stock Count",
+			branch=branch,
+			stock_location=stock_location,
+			rate=max(flt(row.valuation_rate), 0),
+			note=f"{stock_count.count_type}: {stock_count.notes or ''}".rstrip(": "),
+			movement_date=stock_count.count_date,
+		)
+		expected_qty = flt(
+			frappe.db.get_value("Ledgix Stock Movement", movement_name, "previous_quantity"),
+			6,
+		)
+		variance_qty = flt(counted_qty - expected_qty, 6)
+		variance_value = flt(variance_qty * max(flt(row.valuation_rate), 0), 4)
+		frappe.db.set_value(
+			"Ledgix Stock Count Item",
+			row.name,
+			{
+				"expected_quantity": expected_qty,
+				"variance_quantity": variance_qty,
+				"variance_value": variance_value,
+			},
+			update_modified=False,
+		)
+		total_abs_variance += abs(variance_qty)
+		total_variance_value += variance_value
+
+	frappe.db.set_value(
+		"Ledgix Stock Count",
+		stock_count.name,
+		{
+			"total_items": len(stock_count.items),
+			"total_absolute_variance_quantity": flt(total_abs_variance, 6),
+			"total_variance_value": flt(total_variance_value, 4),
+		},
+		update_modified=False,
+	)
