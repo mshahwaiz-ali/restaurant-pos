@@ -33,6 +33,8 @@ class LedgixStockCount(Document):
 			seen.add(row.item)
 
 			item = get_standard_inventory_item(row.item, workflow="stock count")
+			if not int(row.count_confirmed or 0):
+				frappe.throw(f"Confirm the physical count for {row.item}, including an explicit zero count.")
 			if flt(row.counted_quantity) < 0:
 				frappe.throw(f"Counted quantity for {row.item} cannot be negative.")
 			row.uom = row.uom or item.stock_uom
