@@ -23,7 +23,7 @@ class LedgixSalesReturn(Document):
         self.apply_return_tax_snapshot()
 
         if self.original_sale_has_stock_impact():
-            from ledgix_saas.api.stock_identity import normalize_sales_return_serials, validate_sales_return_serial_numbers
+            from ledgix_saas.api.stock_identity_location import normalize_sales_return_serials, validate_sales_return_serial_numbers
             normalize_sales_return_serials(self)
             validate_sales_return_serial_numbers(self)
 
@@ -31,7 +31,7 @@ class LedgixSalesReturn(Document):
         if self.original_sale_has_stock_impact():
             post_sales_return_movements(self)
 
-            from ledgix_saas.api.stock_identity import restore_sale_return_fifo_allocations, restore_sales_return_serials
+            from ledgix_saas.api.stock_identity_location import restore_sale_return_fifo_allocations, restore_sales_return_serials
             restore_sale_return_fifo_allocations(self)
             restore_sales_return_serials(self)
 
@@ -43,7 +43,7 @@ class LedgixSalesReturn(Document):
         cancel_reference_movements("Ledgix Sales Return", self.name)
 
         if self.original_sale_has_stock_impact():
-            from ledgix_saas.api.stock_identity import reverse_sales_return_fifo_allocations, reverse_sales_return_serials
+            from ledgix_saas.api.stock_identity_location import reverse_sales_return_fifo_allocations, reverse_sales_return_serials
             reverse_sales_return_fifo_allocations(self)
             reverse_sales_return_serials(self)
 
