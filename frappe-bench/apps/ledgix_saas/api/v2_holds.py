@@ -5,7 +5,13 @@ from frappe.utils import cint, flt
 
 from ledgix_saas.api.security import has_any_role, require_ledgix_cashier_or_above
 from ledgix_saas.api.shifts import _get_open_shift_for_user
-from ledgix_saas.api.stock_identity import parse_serial_numbers
+from ledgix_saas.api.stock_identity_location import parse_serial_numbers
+from ledgix_saas.services.organization import (
+    ensure_branch_access,
+    get_allowed_branches,
+    resolve_branch_location,
+)
+from ledgix_saas.services.stock import get_location_stock
 
 
 PRIVILEGED_HOLD_ROLES = ("System Manager", "Ledgix Admin", "Ledgix Manager")
@@ -23,10 +29,14 @@ def _normalize_channel(value):
     return channel
 
 
-def _available_serials(item, qty):
+def _available_serials(item, qty, stock_location):
     rows = frappe.get_all(
         "Ledgix Stock Serial",
-        filters={"item": item, "status": "Available"},
+        filters={
+            "item": item,
+            "status": "Available",
+            "stock_location": stock_location,
+        },
         fields=["serial_no"],
         order_by="purchase_date asc, creation asc, serial_no asc",
         limit_page_length=max(cint(qty), 1),
@@ -34,7 +44,7 @@ def _available_serials(item, qty):
     return [row.serial_no for row in rows]
 
 
-def _normalize_serial_selection(item, tracking_type, qty, serial_numbers):
+def _normalize_serial_selection(item, tracking_type, qty, serial_numbers, stock_location):
     if tracking_type != "Serial Based":
         return ""
 
@@ -44,25 +54,29 @@ def _normalize_serial_selection(item, tracking_type, qty, serial_numbers):
 
     serials = parse_serial_numbers(serial_numbers)
     if not serials:
-        serials = _available_serials(item, qty)
+        serials = _available_serials(item, qty, stock_location)
 
     if cint(qty) != len(serials):
         frappe.throw(
             f"Serial Based item {item} requires {cint(qty)} serial number(s), "
-            f"but {len(serials)} available/selected."
+            f"but {len(serials)} available/selected at {stock_location}."
         )
 
     for serial_no in serials:
         serial = frappe.db.get_value(
             "Ledgix Stock Serial",
             {"serial_no": serial_no},
-            ["item", "status"],
+            ["item", "status", "stock_location"],
             as_dict=True,
         )
         if not serial:
             frappe.throw(f"Serial number {serial_no} does not exist for item {item}.")
         if serial.item != item:
             frappe.throw(f"Serial number {serial_no} belongs to item {serial.item}, not {item}.")
+        if serial.stock_location != stock_location:
+            frappe.throw(
+                f"Serial number {serial_no} is held at {serial.stock_location}, not {stock_location}."
+            )
         if serial.status != "Available":
             frappe.throw(
                 f"Serial number {serial_no} for item {item} is not available. "
@@ -72,9 +86,10 @@ def _normalize_serial_selection(item, tracking_type, qty, serial_numbers):
     return "\n".join(serials)
 
 
-def _prepare_hold_rows(cart_items):
+def _prepare_hold_rows(cart_items, stock_location):
     prepared = []
     subtotal = 0.0
+    requested_by_item = {}
 
     for row in _parse_rows(cart_items):
         item_name = str(row.get("item") or "").strip()
@@ -101,10 +116,10 @@ def _prepare_hold_rows(cart_items):
             tracking_type,
             qty,
             row.get("serial_numbers") or "",
+            stock_location,
         )
 
-        # Held rates are display context only. Resume/checkout always re-prices on
-        # the authoritative V2 pricing service before a Sale can be submitted.
+        requested_by_item[item.name] = flt(requested_by_item.get(item.name)) + qty
         amount = qty * max(rate, 0)
         subtotal += amount
         prepared.append({
@@ -119,6 +134,14 @@ def _prepare_hold_rows(cart_items):
 
     if not prepared:
         frappe.throw("Cart is empty.")
+
+    for item_name, requested_qty in requested_by_item.items():
+        available = get_location_stock(item_name, stock_location)
+        if requested_qty > available + 0.000001:
+            frappe.throw(
+                f"Not enough stock for {item_name} at {stock_location}. "
+                f"Available: {available:g}; requested: {requested_qty:g}."
+            )
 
     return prepared, flt(subtotal, 2)
 
@@ -148,16 +171,37 @@ def _validate_hold_context(channel, customer=None, price_list=None):
         frappe.throw("Selected price list was not found.")
 
 
-def _retail_shift(channel):
-    # B2B holds are back-office commercial context and must never inherit an
-    # unrelated cashier register shift merely because the same user has one open.
+def _retail_shift(channel, branch=None):
     if channel != "Retail":
         return None
 
-    shift = _get_open_shift_for_user()
+    shift = _get_open_shift_for_user(branch=branch)
     if not shift:
         frappe.throw("Please open a POS shift before holding a Retail sale.")
     return shift
+
+
+def _resolve_hold_context(channel, shift=None, branch=None, stock_location=None):
+    if shift:
+        shift_context = frappe.db.get_value(
+            "Ledgix POS Shift",
+            shift,
+            ["branch", "stock_location"],
+            as_dict=True,
+        )
+        if shift_context:
+            if branch and shift_context.branch and branch != shift_context.branch:
+                frappe.throw("Held sale Branch must match the open POS Shift Branch.")
+            if stock_location and shift_context.stock_location and stock_location != shift_context.stock_location:
+                frappe.throw("Held sale Stock Location must match the open POS Shift Stock Location.")
+            branch = branch or shift_context.branch
+            stock_location = stock_location or shift_context.stock_location
+
+    return resolve_branch_location(
+        branch,
+        stock_location,
+        purpose="consumption",
+    )
 
 
 def _can_access_hold(hold):
@@ -167,18 +211,32 @@ def _can_access_hold(hold):
 
 
 def _assert_resume_context(hold):
+    if getattr(hold, "branch", None):
+        ensure_branch_access(hold.branch)
     if not _can_access_hold(hold):
         frappe.throw("You cannot access another cashier's held sale.", frappe.PermissionError)
 
     if hold.sale_channel == "Retail":
-        active_shift = _get_open_shift_for_user()
+        active_shift = _get_open_shift_for_user(branch=getattr(hold, "branch", None))
         if not active_shift:
-            frappe.throw("Open a POS shift before resuming this Retail sale.")
+            frappe.throw("Open a POS shift for this Branch before resuming this Retail sale.")
         if hold.shift and hold.shift != active_shift:
             frappe.throw("This held Retail sale belongs to a different POS shift.")
+        active_context = frappe.db.get_value(
+            "Ledgix POS Shift",
+            active_shift,
+            ["branch", "stock_location"],
+            as_dict=True,
+        )
+        if active_context and (
+            active_context.branch != getattr(hold, "branch", None)
+            or active_context.stock_location != getattr(hold, "stock_location", None)
+        ):
+            frappe.throw("This held Retail sale belongs to a different Branch or Stock Location.")
 
 
 def _resume_cart_rows(hold):
+    stock_location = getattr(hold, "stock_location", None)
     cart_items = []
     for row in hold.items:
         tracking_type = row.tracking_type or frappe.db.get_value(
@@ -189,6 +247,7 @@ def _resume_cart_rows(hold):
             tracking_type,
             row.quantity,
             row.serial_numbers or "",
+            stock_location,
         )
         cart_items.append({
             "item": row.item,
@@ -197,9 +256,7 @@ def _resume_cart_rows(hold):
             "serial_numbers": serial_numbers,
             "qty": flt(row.quantity),
             "rate": flt(row.rate),
-            "current_stock": flt(
-                frappe.db.get_value("Ledgix Item", row.item, "current_stock") or 0
-            ),
+            "current_stock": get_location_stock(row.item, stock_location),
         })
     return cart_items
 
@@ -213,13 +270,21 @@ def hold_pos_v2_sale(
     discount_type="Amount",
     discount_value=0,
     notes=None,
+    branch=None,
+    stock_location=None,
 ):
     require_ledgix_cashier_or_above()
 
     channel = _normalize_channel(sale_channel)
     _validate_hold_context(channel, customer=customer, price_list=price_list)
-    shift = _retail_shift(channel)
-    rows, subtotal = _prepare_hold_rows(cart_items)
+    shift = _retail_shift(channel, branch=branch)
+    branch, stock_location = _resolve_hold_context(
+        channel,
+        shift=shift,
+        branch=branch,
+        stock_location=stock_location,
+    )
+    rows, subtotal = _prepare_hold_rows(cart_items, stock_location)
     discount_type, discount_value, discount_amount = _discount_amount(
         subtotal,
         discount_type,
@@ -229,6 +294,8 @@ def hold_pos_v2_sale(
     hold = frappe.new_doc("Ledgix POS Hold")
     hold.status = "Hold"
     hold.shift = shift
+    hold.branch = branch
+    hold.stock_location = stock_location
     hold.cashier = frappe.session.user
     hold.sale_channel = channel
     hold.customer = customer or ""
@@ -246,6 +313,8 @@ def hold_pos_v2_sale(
     return {
         "success": True,
         "hold_id": hold.name,
+        "branch": hold.branch,
+        "stock_location": hold.stock_location,
         "sale_channel": channel,
         "customer": hold.customer or "",
         "price_list": hold.price_list or "",
@@ -254,10 +323,17 @@ def hold_pos_v2_sale(
 
 
 @frappe.whitelist()
-def get_pos_v2_holds():
+def get_pos_v2_holds(branch=None):
     require_ledgix_cashier_or_above()
 
-    filters = {"status": "Hold"}
+    allowed = get_allowed_branches()
+    if branch:
+        ensure_branch_access(branch)
+        allowed = [branch]
+    if not allowed:
+        return {"success": True, "holds": []}
+
+    filters = {"status": "Hold", "branch": ["in", allowed]}
     if not has_any_role(PRIVILEGED_HOLD_ROLES):
         filters["cashier"] = frappe.session.user
 
@@ -269,6 +345,8 @@ def get_pos_v2_holds():
             "creation",
             "cashier",
             "shift",
+            "branch",
+            "stock_location",
             "sale_channel",
             "customer",
             "price_list",
@@ -280,7 +358,7 @@ def get_pos_v2_holds():
         limit_page_length=100,
     )
 
-    active_shift = _get_open_shift_for_user()
+    active_shift = _get_open_shift_for_user(branch=branch)
     visible = []
     for row in rows:
         channel = row.sale_channel or "Retail"
@@ -325,18 +403,16 @@ def resume_pos_v2_hold(hold_id=None):
         frappe.throw("Only active held sales can be resumed.")
     _assert_resume_context(hold)
 
-    # Revalidate serialized identity before consuming the hold. A serial may have
-    # been sold or adjusted while the cart was parked.
     cart_items = _resume_cart_rows(hold)
 
-    # A resumed hold is consumed. If the cashier needs to defer it again, the
-    # current cart can be held as a fresh snapshot with current pricing context.
     hold.status = "Resumed"
     hold.save(ignore_permissions=True)
 
     return {
         "success": True,
         "hold_id": hold.name,
+        "branch": getattr(hold, "branch", None),
+        "stock_location": getattr(hold, "stock_location", None),
         "sale_channel": hold.sale_channel or "Retail",
         "customer": hold.customer or "",
         "price_list": hold.price_list or "",
@@ -359,4 +435,9 @@ def cancel_pos_v2_hold(hold_id=None):
     _assert_resume_context(hold)
     hold.status = "Cancelled"
     hold.save(ignore_permissions=True)
-    return {"success": True, "hold_id": hold.name}
+    return {
+        "success": True,
+        "hold_id": hold.name,
+        "branch": getattr(hold, "branch", None),
+        "stock_location": getattr(hold, "stock_location", None),
+    }
