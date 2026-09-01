@@ -17,11 +17,21 @@ class LedgixPurchase(Document):
     def validate(self):
         if self.docstatus == 0:
             self.status = "Draft"
+        self.apply_operating_context()
         self.calculate_totals()
 
         from ledgix_saas.api.stock_identity import normalize_purchase_serials, validate_purchase_serial_numbers
         normalize_purchase_serials(self)
         validate_purchase_serial_numbers(self)
+
+    def apply_operating_context(self):
+        from ledgix_saas.services.organization import resolve_branch_location
+
+        self.branch, self.stock_location = resolve_branch_location(
+            getattr(self, "branch", None),
+            getattr(self, "stock_location", None),
+            purpose="receiving",
+        )
 
     def on_submit(self):
         self.status = "Submitted"
