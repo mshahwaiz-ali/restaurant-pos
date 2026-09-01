@@ -77,6 +77,11 @@ class LedgixRestaurantOrderItem(Document):
 				frappe.PermissionError,
 			)
 
+	def after_insert(self):
+		from ledgix_saas.services.restaurant_consumption import persist_order_consumption_snapshot
+
+		persist_order_consumption_snapshot(self)
+
 	def validate(self):
 		order = self._validate_parent_order()
 		self._validate_menu_item(order)
@@ -158,6 +163,10 @@ class LedgixRestaurantOrderItem(Document):
 		if before.restaurant_order != self.restaurant_order:
 			if not getattr(self.flags, "allow_check_move", False):
 				frappe.throw("Move Restaurant Order Items between checks through the split/merge service.")
+
+		if flt(self.void_quantity) > flt(before.void_quantity) and flt(before.fired_quantity) > 0:
+			if not getattr(self.flags, "allow_kitchen_void", False):
+				frappe.throw("Fired Restaurant Order Items must be voided through the kitchen delta-KOT service.")
 
 		changed = [field for field in OPERATIONAL_FIELDS if before.get(field) != self.get(field)]
 		if changed and not getattr(self.flags, "allow_operational_mutation", False):
