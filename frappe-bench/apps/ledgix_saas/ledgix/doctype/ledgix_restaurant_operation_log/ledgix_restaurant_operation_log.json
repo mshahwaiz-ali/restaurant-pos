@@ -1,0 +1,45 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:ROPL-{#####}",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "operation_section","operation","branch","actor","occurred_at","request_id",
+  "context_section","table_session","restaurant_order","restaurant_order_item","source_order","destination_order",
+  "reason_section","reason","metadata_json"
+ ],
+ "fields": [
+  {"fieldname":"operation_section","fieldtype":"Section Break","label":"Operation"},
+  {"fieldname":"operation","fieldtype":"Select","in_list_view":1,"in_standard_filter":1,"label":"Operation","options":"Open Session\nClose Session\nOpen Check\nAdd Item\nEdit Item\nVoid Item\nTransfer Table\nChange Server\nAdjust Covers\nSplit Check\nMerge Check\nKitchen Fire\nKitchen Void\nKitchen Recall\nKitchen State","reqd":1},
+  {"fieldname":"branch","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Branch","options":"Ledgix Branch","reqd":1},
+  {"fieldname":"actor","fieldtype":"Link","in_list_view":1,"label":"Actor","options":"User","read_only":1,"reqd":1},
+  {"fieldname":"occurred_at","fieldtype":"Datetime","in_list_view":1,"label":"Occurred At","read_only":1,"reqd":1},
+  {"description":"Optional idempotency identity for retryable protected operations.","fieldname":"request_id","fieldtype":"Data","label":"Request ID","no_copy":1,"unique":1},
+  {"fieldname":"context_section","fieldtype":"Section Break","label":"Restaurant Context"},
+  {"fieldname":"table_session","fieldtype":"Link","in_standard_filter":1,"label":"Table Session","options":"Ledgix Table Session","read_only":1},
+  {"fieldname":"restaurant_order","fieldtype":"Link","in_standard_filter":1,"label":"Restaurant Order","options":"Ledgix Restaurant Order","read_only":1},
+  {"fieldname":"restaurant_order_item","fieldtype":"Link","label":"Restaurant Order Item","options":"Ledgix Restaurant Order Item","read_only":1},
+  {"fieldname":"source_order","fieldtype":"Link","label":"Source Order","options":"Ledgix Restaurant Order","read_only":1},
+  {"fieldname":"destination_order","fieldtype":"Link","label":"Destination Order","options":"Ledgix Restaurant Order","read_only":1},
+  {"fieldname":"reason_section","fieldtype":"Section Break","label":"Reason / Metadata"},
+  {"fieldname":"reason","fieldtype":"Small Text","label":"Reason","read_only":1},
+  {"fieldname":"metadata_json","fieldtype":"Code","label":"Metadata JSON","options":"JSON","read_only":1}
+ ],
+ "grid_page_length":50,
+ "index_web_pages_for_search":1,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Restaurant Operation Log",
+ "naming_rule":"Expression (old style)",
+ "permissions":[
+  {"export":1,"print":1,"read":1,"report":1,"role":"System Manager"},
+  {"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Admin"},
+  {"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Manager"}
+ ],
+ "search_fields":"operation,branch,restaurant_order,table_session,request_id",
+ "sort_field":"occurred_at",
+ "sort_order":"DESC",
+ "states":[],
+ "track_changes":0
+}
