@@ -7,7 +7,9 @@ from frappe.tests.utils import FrappeTestCase
 
 from ledgix.doctype.v2_test_utils import configure_v2_test_environment, make_item
 from ledgix_saas.services.kitchen import fire_order_items, set_kot_item_status, void_kitchen_item
+from ledgix_saas.services.organization import resolve_branch_location
 from ledgix_saas.services.restaurant_orders import add_order_item, open_restaurant_order
+from ledgix_saas.services.stock import _post_movement
 
 
 class TestKitchenPhase5(FrappeTestCase):
@@ -24,12 +26,25 @@ class TestKitchenPhase5(FrappeTestCase):
 		self.station = self._make_default_station()
 
 	def _make_ingredient(self):
-		item = make_item(cost_price=2, opening_stock=1000)
+		item = make_item(cost_price=2, opening_stock=0)
 		item.restaurant_item_type = "Ingredient"
 		item.is_sellable = 0
 		item.track_inventory = 1
 		item.stock_uom = "Gram"
 		item.save(ignore_permissions=True)
+		branch, stock_location = resolve_branch_location(self.branch, purpose="consumption")
+		_post_movement(
+			item=item.name,
+			quantity=1000,
+			movement_type="IN",
+			reference_doctype="Ledgix Item",
+			reference_name=item.name,
+			source="Opening",
+			branch=branch,
+			stock_location=stock_location,
+			rate=2,
+			note="Kitchen phase 5 test stock",
+		)
 		return item
 
 	def _make_finished_item(self):
@@ -141,9 +156,12 @@ class TestKitchenPhase5(FrappeTestCase):
 		return order, order["items"][0]["name"]
 
 	def _movement_rows_for_kot(self, kot_name, movement_type):
+		kot_items = frappe.get_all("Ledgix KOT Item", filters={"kot": kot_name}, pluck="name", limit_page_length=0)
+		if not kot_items:
+			return []
 		consumption_names = frappe.get_all(
 			"Ledgix KOT Consumption",
-			filters={"kot_item": ["in", frappe.get_all("Ledgix KOT Item", filters={"kot": kot_name}, pluck="name")]},
+			filters={"kot_item": ["in", kot_items]},
 			pluck="name",
 			limit_page_length=0,
 		)
