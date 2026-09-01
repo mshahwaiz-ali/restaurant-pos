@@ -51,10 +51,11 @@ update_website_context = [
 	"ledgix_saas.api.brand.update_website_context",
 ]
 
-# Keep the existing Tax Center API contract stable while routing FBR readiness
-# through the environment-aware preflight service.
+# Keep legacy HTTP contracts stable while routing them through the current
+# environment-aware / branch-aware authoritative services.
 override_whitelisted_methods = {
 	"ledgix_saas.api.tax_center.get_fbr_readiness": "ledgix_saas.api.fbr_preflight.get_fbr_readiness",
+	"ledgix_saas.api.business_intelligence.get_business_intelligence_data": "ledgix_saas.api.inventory_intelligence.get_inventory_intelligence_data",
 }
 
 # Production FBR recovery is intentionally fail-closed. An ambiguous POST/HTTP
