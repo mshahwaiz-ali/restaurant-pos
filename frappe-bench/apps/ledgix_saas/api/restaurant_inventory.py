@@ -41,6 +41,23 @@ def _waste_payload(name):
 	}
 
 
+def _count_payload(name):
+	doc = frappe.get_doc("Ledgix Stock Count", name)
+	return {
+		"name": doc.name,
+		"docstatus": doc.docstatus,
+		"status": doc.status,
+		"count_date": doc.count_date,
+		"branch": doc.branch,
+		"stock_location": doc.stock_location,
+		"count_type": doc.count_type,
+		"total_items": int(doc.total_items or 0),
+		"total_absolute_variance_quantity": flt(doc.total_absolute_variance_quantity, 6),
+		"total_variance_value": flt(doc.total_variance_value, 4),
+		"items": [row.as_dict() for row in doc.items],
+	}
+
+
 @frappe.whitelist()
 def transfer_stock(
 	source_stock_location,
@@ -129,3 +146,46 @@ def record_waste(
 	doc.insert(ignore_permissions=True)
 	doc.submit()
 	return {**_waste_payload(doc.name), "idempotent_replay": False}
+
+
+@frappe.whitelist()
+def record_stock_count(
+	stock_location,
+	items,
+	client_count_id,
+	branch=None,
+	count_date=None,
+	count_type="Cycle Count",
+	notes=None,
+):
+	require_ledgix_manager_or_above()
+	if not client_count_id:
+		frappe.throw("Client Count ID is required for idempotent Stock Count.")
+	existing = frappe.db.get_value(
+		"Ledgix Stock Count",
+		{"client_count_id": client_count_id},
+		["name", "docstatus"],
+		as_dict=True,
+	)
+	if existing:
+		if int(existing.docstatus or 0) == 1:
+			return {**_count_payload(existing.name), "idempotent_replay": True}
+		frappe.throw(f"Stock Count {existing.name} already exists in a non-submitted state and requires review.")
+
+	doc = frappe.new_doc("Ledgix Stock Count")
+	doc.client_count_id = client_count_id
+	doc.branch = branch
+	doc.stock_location = stock_location
+	doc.count_date = count_date
+	doc.count_type = count_type or "Cycle Count"
+	doc.notes = notes
+	for row in _rows(items):
+		counted_quantity = row.get("counted_quantity") if "counted_quantity" in row else row.get("quantity")
+		doc.append("items", {
+			"item": row.get("item"),
+			"counted_quantity": flt(counted_quantity),
+			"uom": row.get("uom"),
+		})
+	doc.insert(ignore_permissions=True)
+	doc.submit()
+	return {**_count_payload(doc.name), "idempotent_replay": False}
