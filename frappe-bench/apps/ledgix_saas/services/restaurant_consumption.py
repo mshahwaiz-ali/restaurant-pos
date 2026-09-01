@@ -61,14 +61,42 @@ def build_locked_order_consumption(item, *, recipe=None, modifier_rows=None):
 	return rows
 
 
+def _copy_origin_snapshot(origin_order_item):
+	if not origin_order_item:
+		return []
+	return [
+		{
+			"ingredient_item": row.ingredient_item,
+			"stock_uom": row.stock_uom,
+			"quantity_per_unit": flt(row.quantity_per_unit, 6),
+			"cost_rate": flt(row.cost_rate, 6),
+			"line_cost_per_unit": flt(row.line_cost_per_unit, 4),
+		}
+		for row in frappe.get_all(
+			"Ledgix Restaurant Order Consumption",
+			filters={"restaurant_order_item": origin_order_item},
+			fields=["ingredient_item", "stock_uom", "quantity_per_unit", "cost_rate", "line_cost_per_unit"],
+			order_by="creation asc",
+			limit_page_length=0,
+		)
+	]
+
+
 def persist_order_consumption_snapshot(order_item):
 	if frappe.db.exists("Ledgix Restaurant Order Consumption", {"restaurant_order_item": order_item.name}):
 		return
-	rows = build_locked_order_consumption(
-		order_item.item,
-		recipe=order_item.recipe,
-		modifier_rows=[row.as_dict() for row in (order_item.modifiers or [])],
-	)
+
+	# A quantity-split clone inherits the original line's historical ingredient
+	# truth verbatim. Never reinterpret a split line using today's recipe or
+	# modifier masters.
+	rows = _copy_origin_snapshot(order_item.origin_order_item)
+	if not rows:
+		rows = build_locked_order_consumption(
+			order_item.item,
+			recipe=order_item.recipe,
+			modifier_rows=[row.as_dict() for row in (order_item.modifiers or [])],
+		)
+
 	for row in rows:
 		doc = frappe.get_doc({
 			"doctype": "Ledgix Restaurant Order Consumption",
