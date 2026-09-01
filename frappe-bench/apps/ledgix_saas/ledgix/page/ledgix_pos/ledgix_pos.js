@@ -441,7 +441,8 @@ class LedgixRestaurantPOS {
 			<div class="total"><span>Check total</span><strong>${this.money(order.grand_total)}</strong></div>`);
 		const activeLines = lines.filter(line => !line.is_voided && Number(line.billable_quantity || 0) > 0);
 		const pending = activeLines.reduce((sum, line) => sum + Math.max(Number(line.billable_quantity || 0) - Number(line.fired_quantity || 0), 0), 0);
-		this.$root.find(".lx-fire-order").prop("disabled", pending <= 0).text(pending > 0 ? `Send ${pending:g} to kitchen`.replace(":g", "") : "Kitchen sent");
+		const pendingLabel = Number(pending).toLocaleString(undefined, { maximumFractionDigits: 3 });
+		this.$root.find(".lx-fire-order").prop("disabled", pending <= 0).text(pending > 0 ? `Send ${pendingLabel} to kitchen` : "Kitchen sent");
 		this.$root.find(".lx-settle-check").prop("disabled", !activeLines.length || pending > 0).attr("title", pending > 0 ? "Fire all billable items before settlement." : "Settle this check");
 		this.renderHeldCourses();
 		this.renderToolbar();
