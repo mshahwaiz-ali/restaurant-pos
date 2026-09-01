@@ -1,0 +1,46 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:CNT-{#####}",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "is_submittable": 1,
+ "field_order": [
+  "context_section","count_date","branch","stock_location","context_column","count_type","status","client_count_id",
+  "items_section","items","totals_section","total_items","total_absolute_variance_quantity","total_variance_value","notes_section","notes","amended_from"
+ ],
+ "fields": [
+  {"fieldname":"context_section","fieldtype":"Section Break","label":"Stock Count"},
+  {"fieldname":"count_date","fieldtype":"Datetime","in_list_view":1,"in_standard_filter":1,"label":"Count Date","reqd":1},
+  {"fieldname":"branch","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Branch","options":"Ledgix Branch","reqd":1},
+  {"fieldname":"stock_location","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Stock Location","options":"Ledgix Stock Location","reqd":1},
+  {"fieldname":"context_column","fieldtype":"Column Break"},
+  {"default":"Cycle Count","fieldname":"count_type","fieldtype":"Select","in_list_view":1,"in_standard_filter":1,"label":"Count Type","options":"Cycle Count\nPhysical Count\nSpot Check\nOpening Verification\nOther","reqd":1},
+  {"default":"Draft","fieldname":"status","fieldtype":"Select","in_list_view":1,"in_standard_filter":1,"label":"Status","options":"Draft\nSubmitted","read_only":1},
+  {"fieldname":"client_count_id","fieldtype":"Data","hidden":1,"label":"Client Count ID","no_copy":1,"unique":1},
+  {"fieldname":"items_section","fieldtype":"Section Break","label":"Count Sheet"},
+  {"fieldname":"items","fieldtype":"Table","label":"Items","options":"Ledgix Stock Count Item","reqd":1},
+  {"fieldname":"totals_section","fieldtype":"Section Break","label":"Variance Summary"},
+  {"default":"0","fieldname":"total_items","fieldtype":"Int","label":"Items Counted","read_only":1},
+  {"default":"0","fieldname":"total_absolute_variance_quantity","fieldtype":"Float","label":"Absolute Variance Quantity","precision":"6","read_only":1},
+  {"default":"0","fieldname":"total_variance_value","fieldtype":"Currency","label":"Net Variance Value","precision":"4","read_only":1},
+  {"fieldname":"notes_section","fieldtype":"Section Break","label":"Notes"},
+  {"fieldname":"notes","fieldtype":"Small Text","label":"Notes"},
+  {"fieldname":"amended_from","fieldtype":"Link","label":"Amended From","no_copy":1,"options":"Ledgix Stock Count","print_hide":1,"read_only":1,"search_index":1}
+ ],
+ "grid_page_length":50,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Stock Count",
+ "naming_rule":"Expression (old style)",
+ "permissions":[
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"submit":1,"cancel":0,"amend":0,"role":"System Manager","share":1,"write":1},
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"submit":1,"cancel":0,"amend":0,"role":"Ledgix Admin","share":1,"write":1},
+  {"create":1,"delete":0,"email":0,"export":1,"print":1,"read":1,"report":1,"submit":1,"cancel":0,"amend":0,"role":"Ledgix Manager","share":0,"write":1}
+ ],
+ "search_fields":"branch,stock_location,count_type",
+ "sort_field":"count_date",
+ "sort_order":"DESC",
+ "states":[],
+ "track_changes":1
+}
