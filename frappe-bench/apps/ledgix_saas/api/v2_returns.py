@@ -7,6 +7,7 @@ from frappe.utils import cint, flt
 from ledgix_saas.api.security import require_ledgix_cashier_or_above
 from ledgix_saas.api.settings import get_stock_control_mode, sale_matches_current_stock_mode
 from ledgix_saas.api.stock_identity import is_serial_based_item, parse_serial_numbers
+from ledgix_saas.services.organization import ensure_branch_access
 
 
 def _return_item_has_original_row():
@@ -84,9 +85,12 @@ def _returnable_serial_numbers(sale, sale_item):
 
     original_serials = parse_serial_numbers(getattr(sale_item, "serial_numbers", None))
     if not original_serials:
+        filters = {"item": sale_item.item, "sale": sale.name, "status": "Sold"}
+        if getattr(sale, "stock_location", None):
+            filters["stock_location"] = sale.stock_location
         original_serials = frappe.get_all(
             "Ledgix Stock Serial",
-            filters={"item": sale_item.item, "sale": sale.name, "status": "Sold"},
+            filters=filters,
             pluck="serial_no",
             order_by="sold_date asc, creation asc",
         )
@@ -96,7 +100,7 @@ def _returnable_serial_numbers(sale, sale_item):
         serial = frappe.db.get_value(
             "Ledgix Stock Serial",
             {"serial_no": serial_no},
-            ["item", "status", "sale", "sale_item_row"],
+            ["item", "status", "sale", "sale_item_row", "stock_location"],
             as_dict=True,
         )
         if not serial:
@@ -104,6 +108,8 @@ def _returnable_serial_numbers(sale, sale_item):
         if serial.item != sale_item.item or serial.sale != sale.name or serial.status != "Sold":
             continue
         if serial.sale_item_row and serial.sale_item_row != sale_item.name:
+            continue
+        if getattr(sale, "stock_location", None) and serial.stock_location != sale.stock_location:
             continue
         available.append(serial_no)
 
@@ -133,7 +139,7 @@ def _validate_requested_serials(sale, sale_item, qty, serial_numbers):
         serial = frappe.db.get_value(
             "Ledgix Stock Serial",
             {"serial_no": serial_no},
-            ["item", "status", "sale", "sale_item_row"],
+            ["item", "status", "sale", "sale_item_row", "stock_location"],
             as_dict=True,
         )
         if not serial:
@@ -156,6 +162,10 @@ def _validate_requested_serials(sale, sale_item, qty, serial_numbers):
         if serial.sale_item_row and serial.sale_item_row != sale_item.name:
             frappe.throw(
                 _("Serial number {0} belongs to a different original Sale row.").format(serial_no)
+            )
+        if getattr(sale, "stock_location", None) and serial.stock_location != sale.stock_location:
+            frappe.throw(
+                _("Serial number {0} belongs to a different Stock Location.").format(serial_no)
             )
         if serial.status != "Sold":
             frappe.throw(
@@ -282,6 +292,8 @@ def _resolve_submitted_sale(sale_id):
     sale = frappe.get_doc("Ledgix Sale", sale_name)
     if sale.docstatus != 1:
         frappe.throw(_("Only submitted sales can be returned."))
+    if getattr(sale, "branch", None):
+        ensure_branch_access(sale.branch)
     if not sale_matches_current_stock_mode(sale.name):
         frappe.throw(
             _("This invoice belongs to a different stock mode. Current mode: {0}.").format(
@@ -325,6 +337,8 @@ def get_pos_v2_return_context(sale_id=None):
         "success": True,
         "sale_id": sale.name,
         "invoice_number": sale.invoice_number,
+        "branch": getattr(sale, "branch", None),
+        "stock_location": getattr(sale, "stock_location", None),
         "customer": sale.customer,
         "sale_date": sale.sale_date,
         "items": items,
@@ -362,6 +376,8 @@ def create_pos_v2_return(original_sale=None, return_items=None, reason=None):
         "success": True,
         "return_id": return_doc.name,
         "original_sale": sale.name,
+        "branch": getattr(return_doc, "branch", None),
+        "stock_location": getattr(return_doc, "stock_location", None),
         "customer": return_doc.customer,
         "total_amount": flt(return_doc.total_amount),
         "tax_amount": flt(return_doc.tax_amount),
