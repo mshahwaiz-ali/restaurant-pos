@@ -1,0 +1,51 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:recipe_key",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "recipe_identity_section","finished_item","recipe_version","recipe_name","recipe_identity_column","is_active","effective_from","effective_to","yield_section","yield_quantity","output_uom","ingredients_section","ingredients","cost_section","ingredient_cost","cost_per_serving","costed_at","instructions_section","preparation_instructions","recipe_key"
+ ],
+ "fields": [
+  {"fieldname":"recipe_identity_section","fieldtype":"Section Break","label":"Recipe"},
+  {"fieldname":"finished_item","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Finished / Menu Item","options":"Ledgix Item","reqd":1},
+  {"default":"1","fieldname":"recipe_version","fieldtype":"Int","in_list_view":1,"label":"Version","reqd":1},
+  {"description":"Optional operational recipe name. Falls back to the finished item name.","fieldname":"recipe_name","fieldtype":"Data","in_list_view":1,"label":"Recipe Name"},
+  {"fieldname":"recipe_identity_column","fieldtype":"Column Break"},
+  {"default":"1","fieldname":"is_active","fieldtype":"Check","in_list_view":1,"label":"Active"},
+  {"fieldname":"effective_from","fieldtype":"Date","in_standard_filter":1,"label":"Effective From"},
+  {"fieldname":"effective_to","fieldtype":"Date","in_standard_filter":1,"label":"Effective To"},
+  {"fieldname":"yield_section","fieldtype":"Section Break","label":"Yield"},
+  {"default":"1","fieldname":"yield_quantity","fieldtype":"Float","label":"Yield Quantity","precision":"6","reqd":1},
+  {"fieldname":"output_uom","fieldtype":"Link","label":"Output UOM","options":"Ledgix UOM","reqd":1},
+  {"fieldname":"ingredients_section","fieldtype":"Section Break","label":"Ingredients"},
+  {"fieldname":"ingredients","fieldtype":"Table","label":"Ingredients","options":"Ledgix Recipe Ingredient","reqd":1},
+  {"fieldname":"cost_section","fieldtype":"Section Break","label":"Food Cost"},
+  {"description":"Current ingredient valuation snapshot for the full recipe yield.","fieldname":"ingredient_cost","fieldtype":"Currency","in_list_view":1,"label":"Recipe Cost","precision":"4","read_only":1},
+  {"description":"Recipe Cost divided by Yield Quantity.","fieldname":"cost_per_serving","fieldtype":"Currency","in_list_view":1,"label":"Cost per Serving","precision":"4","read_only":1},
+  {"fieldname":"costed_at","fieldtype":"Datetime","label":"Costed At","read_only":1},
+  {"fieldname":"instructions_section","fieldtype":"Section Break","label":"Preparation"},
+  {"fieldname":"preparation_instructions","fieldtype":"Long Text","label":"Preparation Instructions"},
+  {"fieldname":"recipe_key","fieldtype":"Data","hidden":1,"label":"Recipe Key","read_only":1,"unique":1}
+ ],
+ "grid_page_length":50,
+ "index_web_pages_for_search":1,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Recipe",
+ "naming_rule":"By fieldname",
+ "permissions":[
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"System Manager","share":1,"write":1},
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Admin","share":1,"write":1},
+  {"create":1,"delete":0,"email":0,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Manager","share":0,"write":1},
+  {"create":0,"delete":0,"email":0,"export":0,"print":0,"read":1,"report":0,"role":"Ledgix Cashier","share":0,"write":0}
+ ],
+ "row_format":"Dynamic",
+ "rows_threshold_for_grid_search":20,
+ "search_fields":"recipe_name,finished_item",
+ "sort_field":"modified",
+ "sort_order":"DESC",
+ "states":[],
+ "track_changes":1
+}
