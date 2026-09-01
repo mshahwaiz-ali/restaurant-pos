@@ -1,0 +1,41 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:station_key",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["station_section","branch","station_code","station_name","station_column","station_type","display_priority","is_default_station","is_active","settings_section","target_prep_minutes","show_course","show_seat","station_key"],
+ "fields": [
+  {"fieldname":"station_section","fieldtype":"Section Break","label":"Kitchen Station"},
+  {"fieldname":"branch","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Branch","options":"Ledgix Branch","reqd":1},
+  {"fieldname":"station_code","fieldtype":"Data","in_list_view":1,"label":"Station Code","reqd":1},
+  {"fieldname":"station_name","fieldtype":"Data","in_list_view":1,"label":"Station Name","reqd":1},
+  {"fieldname":"station_column","fieldtype":"Column Break"},
+  {"default":"Kitchen","fieldname":"station_type","fieldtype":"Select","in_list_view":1,"label":"Station Type","options":"Kitchen\nBar\nDessert\nExpo","reqd":1},
+  {"default":"10","fieldname":"display_priority","fieldtype":"Int","label":"Display Priority"},
+  {"default":"0","description":"Fallback station when no explicit route matches within this branch.","fieldname":"is_default_station","fieldtype":"Check","label":"Default Station"},
+  {"default":"1","fieldname":"is_active","fieldtype":"Check","in_list_view":1,"label":"Active"},
+  {"fieldname":"settings_section","fieldtype":"Section Break","label":"KDS Settings"},
+  {"default":"15","fieldname":"target_prep_minutes","fieldtype":"Int","label":"Target Prep Minutes"},
+  {"default":"1","fieldname":"show_course","fieldtype":"Check","label":"Show Course"},
+  {"default":"1","fieldname":"show_seat","fieldtype":"Check","label":"Show Seat"},
+  {"fieldname":"station_key","fieldtype":"Data","hidden":1,"label":"Station Key","read_only":1,"unique":1}
+ ],
+ "grid_page_length":50,
+ "index_web_pages_for_search":1,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Kitchen Station",
+ "naming_rule":"By fieldname",
+ "permissions":[
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"System Manager","share":1,"write":1},
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Admin","share":1,"write":1},
+  {"create":1,"delete":0,"email":0,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Manager","share":0,"write":1},
+  {"read":1,"role":"Ledgix Cashier"}
+ ],
+ "search_fields":"station_name,station_code,branch",
+ "sort_field":"display_priority",
+ "sort_order":"ASC",
+ "states":[],
+ "track_changes":1
+}

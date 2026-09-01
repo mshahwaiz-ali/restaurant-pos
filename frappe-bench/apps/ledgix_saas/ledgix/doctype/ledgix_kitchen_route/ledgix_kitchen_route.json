@@ -1,0 +1,37 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:KRT-{#####}",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["route_section","branch","kitchen_station","priority","is_active","target_section","route_type","item","menu_item","menu_section"],
+ "fields": [
+  {"fieldname":"route_section","fieldtype":"Section Break","label":"Kitchen Routing Rule"},
+  {"fieldname":"branch","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Branch","options":"Ledgix Branch","reqd":1},
+  {"fieldname":"kitchen_station","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Kitchen Station","options":"Ledgix Kitchen Station","reqd":1},
+  {"default":"10","description":"Lower numbers win when more than one rule matches.","fieldname":"priority","fieldtype":"Int","in_list_view":1,"label":"Priority"},
+  {"default":"1","fieldname":"is_active","fieldtype":"Check","in_list_view":1,"label":"Active"},
+  {"fieldname":"target_section","fieldtype":"Section Break","label":"Route Target"},
+  {"default":"Item","fieldname":"route_type","fieldtype":"Select","in_list_view":1,"label":"Route Type","options":"Item\nMenu Item\nMenu Section","reqd":1},
+  {"depends_on":"eval:doc.route_type=='Item'","fieldname":"item","fieldtype":"Link","label":"Item","options":"Ledgix Item"},
+  {"depends_on":"eval:doc.route_type=='Menu Item'","fieldname":"menu_item","fieldtype":"Link","label":"Menu Item","options":"Ledgix Menu Item"},
+  {"depends_on":"eval:doc.route_type=='Menu Section'","fieldname":"menu_section","fieldtype":"Link","label":"Menu Section","options":"Ledgix Menu Section"}
+ ],
+ "grid_page_length":50,
+ "index_web_pages_for_search":1,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Kitchen Route",
+ "naming_rule":"Expression (old style)",
+ "permissions":[
+  {"create":1,"delete":1,"export":1,"print":1,"read":1,"report":1,"role":"System Manager","share":1,"write":1},
+  {"create":1,"delete":1,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Admin","share":1,"write":1},
+  {"create":1,"delete":0,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Manager","write":1},
+  {"read":1,"role":"Ledgix Cashier"}
+ ],
+ "search_fields":"branch,kitchen_station,item,menu_item,menu_section",
+ "sort_field":"priority",
+ "sort_order":"ASC",
+ "states":[],
+ "track_changes":1
+}
