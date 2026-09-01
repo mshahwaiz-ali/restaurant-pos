@@ -18,6 +18,7 @@ from ledgix_saas.api.v2_holds import (
     hold_pos_v2_sale,
     resume_pos_v2_hold,
 )
+from ledgix_saas.api.v2_inventory import get_available_pos_serials
 from ledgix_saas.api.v2_pos import (
     complete_pos_v2_sale,
     get_pos_v2_boot,
@@ -27,15 +28,26 @@ from ledgix_saas.api.v2_returns import (
     create_pos_v2_return,
     get_pos_v2_return_context,
 )
+from ledgix_saas.services.organization import (
+    ensure_branch_access,
+    get_allowed_branches,
+    resolve_branch_location,
+)
+from ledgix_saas.services.stock import get_location_stock
 
 
 @frappe.whitelist()
-def get_item_by_barcode_or_sku(code):
+def get_item_by_barcode_or_sku(code, branch=None, stock_location=None):
     require_ledgix_cashier_or_above()
     code = str(code or "").strip()
     if not code:
         frappe.throw("Barcode / SKU / Item Code is required")
 
+    branch, stock_location = resolve_branch_location(
+        branch,
+        stock_location,
+        purpose="consumption",
+    )
     for fieldname in ("barcode", "sku", "item_code"):
         name = frappe.db.get_value(
             "Ledgix Item",
@@ -43,35 +55,48 @@ def get_item_by_barcode_or_sku(code):
             "name",
         )
         if name:
-            return {
-                "found": True,
-                "item": frappe.db.get_value(
-                    "Ledgix Item",
-                    name,
-                    [
-                        "name",
-                        "item_name",
-                        "item_code",
-                        "sku",
-                        "barcode",
-                        "unit",
-                        "tracking_type",
-                        "selling_price",
-                        "cost_price",
-                        "current_stock",
-                    ],
-                    as_dict=True,
-                ),
-            }
+            item = frappe.db.get_value(
+                "Ledgix Item",
+                name,
+                [
+                    "name",
+                    "item_name",
+                    "item_code",
+                    "sku",
+                    "barcode",
+                    "unit",
+                    "tracking_type",
+                    "selling_price",
+                    "cost_price",
+                    "current_stock",
+                ],
+                as_dict=True,
+            )
+            item["aggregate_stock"] = flt(item.current_stock)
+            item["current_stock"] = get_location_stock(name, stock_location)
+            item["branch"] = branch
+            item["stock_location"] = stock_location
+            return {"found": True, "item": item}
     return {"found": False, "message": "No active item found for this barcode / SKU / item code"}
 
 
 @frappe.whitelist()
-def get_pos_boot_data():
+def get_pos_boot_data(branch=None, stock_location=None):
     """Compatibility boot response backed by the V2 catalog and configuration."""
-    boot = get_pos_v2_boot(sale_channel="Retail")
-    catalog = search_pos_v2_items(sale_channel="Retail", limit=60)
+    boot = get_pos_v2_boot(
+        sale_channel="Retail",
+        branch=branch,
+        stock_location=stock_location,
+    )
+    catalog = search_pos_v2_items(
+        sale_channel="Retail",
+        limit=60,
+        branch=boot.get("branch"),
+        stock_location=boot.get("stock_location"),
+    )
     return {
+        "branch": boot.get("branch"),
+        "stock_location": boot.get("stock_location"),
         "categories": boot.get("categories") or [],
         "items": catalog.get("items") or [],
         "payment_methods": boot.get("payment_methods") or [],
@@ -81,43 +106,44 @@ def get_pos_boot_data():
 
 
 @frappe.whitelist()
-def search_pos_items(query=None, category=None):
+def search_pos_items(query=None, category=None, branch=None, stock_location=None):
     result = search_pos_v2_items(
         query=query,
         category=category,
         sale_channel="Retail",
         limit=80,
+        branch=branch,
+        stock_location=stock_location,
     )
-    return {"items": result.get("items") or []}
+    return {
+        "branch": result.get("branch"),
+        "stock_location": result.get("stock_location"),
+        "items": result.get("items") or [],
+    }
 
 
 @frappe.whitelist()
-def get_available_serials_for_pos(item, limit=100):
-    require_ledgix_cashier_or_above()
-    item = str(item or "").strip()
-    if not item or not frappe.db.exists("Ledgix Item", item):
-        frappe.throw("Valid item is required")
-
-    limit = min(max(int(limit or 100), 1), 500)
-    rows = frappe.get_all(
-        "Ledgix Stock Serial",
-        filters={"item": item, "status": "Available"},
-        fields=["name", "serial_no", "item", "purchase", "purchase_date", "status"],
-        order_by="purchase_date asc, creation asc",
-        limit_page_length=limit,
+def get_available_serials_for_pos(item, limit=100, branch=None, stock_location=None):
+    result = get_available_pos_serials(
+        item=item,
+        limit=limit,
+        branch=branch,
+        stock_location=stock_location,
     )
     return {
-        "item": item,
+        "item": result.get("item"),
+        "branch": result.get("branch"),
+        "stock_location": result.get("stock_location"),
         "serials": [
             {
-                "name": row.name,
-                "serial_number": row.serial_no,
-                "item": row.item,
-                "purchase": row.purchase,
-                "purchase_date": row.purchase_date,
-                "status": row.status,
+                "name": row.get("name"),
+                "serial_number": row.get("serial_no"),
+                "item": result.get("item"),
+                "purchase": row.get("purchase"),
+                "purchase_date": row.get("purchase_date"),
+                "status": "Available",
             }
-            for row in rows
+            for row in result.get("serials") or []
         ],
     }
 
@@ -129,6 +155,8 @@ def create_pos_sale(
     discount_type="Amount",
     discount_value=0,
     client_sale_id=None,
+    branch=None,
+    stock_location=None,
 ):
     """Old checkout path delegates to the authoritative V2 Retail checkout."""
     tenders = frappe.parse_json(payments) if isinstance(payments, str) else (payments or [])
@@ -147,6 +175,8 @@ def create_pos_sale(
         discount_type=discount_type,
         discount_value=discount_value,
         client_sale_id=client_sale_id,
+        branch=branch,
+        stock_location=stock_location,
     )
 
 
@@ -178,13 +208,21 @@ def delete_held_pos_sale(hold_id=None):
 
 @frappe.whitelist()
 def get_pos_sale_for_return(sale_id=None):
-    return get_pos_v2_return_context(sale_id=sale_id)
+    result = get_pos_v2_return_context(sale_id=sale_id)
+    if isinstance(result, dict):
+        branch = result.get("branch")
+        if branch:
+            ensure_branch_access(branch)
+    return result
 
 
 @frappe.whitelist()
 def create_pos_sales_return(original_sale=None, return_items=None, reason=None):
     if not str(reason or "").strip():
         frappe.throw("Return reason is required in Ledgix V2.")
+    sale_branch = frappe.db.get_value("Ledgix Sale", original_sale, "branch") if original_sale else None
+    if sale_branch:
+        ensure_branch_access(sale_branch)
     return create_pos_v2_return(
         original_sale=original_sale,
         return_items=return_items,
@@ -193,14 +231,28 @@ def create_pos_sales_return(original_sale=None, return_items=None, reason=None):
 
 
 @frappe.whitelist()
-def get_recent_pos_sales(limit=10, offset=0, query=None):
-    """Compatibility read across all submitted Sales; no retired stock-mode filtering."""
+def get_recent_pos_sales(limit=10, offset=0, query=None, branch=None):
+    """Compatibility sale history restricted to the caller's authorized branches."""
     require_ledgix_cashier_or_above()
     limit = min(max(int(limit or 10), 1), 50)
     offset = max(int(offset or 0), 0)
     query = str(query or "").strip()
 
-    filters = {"docstatus": 1}
+    allowed = get_allowed_branches()
+    if branch:
+        ensure_branch_access(branch)
+        allowed = [branch]
+    if not allowed:
+        return {
+            "success": True,
+            "sales": [],
+            "limit": limit,
+            "offset": offset,
+            "total_count": 0,
+            "has_more": False,
+        }
+
+    filters = {"docstatus": 1, "branch": ["in", allowed]}
     or_filters = None
     if query:
         like = f"%{query}%"
@@ -219,6 +271,8 @@ def get_recent_pos_sales(limit=10, offset=0, query=None):
             "invoice_number",
             "creation",
             "sale_date",
+            "branch",
+            "stock_location",
             "customer",
             "sale_channel",
             "pos_shift",
@@ -272,6 +326,8 @@ def get_pos_sale_receipt_data(sale_id=None):
     sale = frappe.get_doc("Ledgix Sale", sale_id)
     if sale.docstatus != 1:
         frappe.throw("Only submitted sales can be printed")
+    if getattr(sale, "branch", None):
+        ensure_branch_access(sale.branch)
 
     payments = frappe.db.sql(
         """
@@ -299,6 +355,8 @@ def get_pos_sale_receipt_data(sale_id=None):
             "sale_id": sale.name,
             "invoice_number": sale.invoice_number,
             "date_time": sale.creation,
+            "branch": getattr(sale, "branch", None),
+            "stock_location": getattr(sale, "stock_location", None),
             "customer": sale.customer,
             "cashier": sale.owner,
             "shift_id": sale.pos_shift,
