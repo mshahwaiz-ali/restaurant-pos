@@ -1,0 +1,36 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:rule_key",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["rule_section","branch","stock_location","item","rule_column","minimum_quantity","target_quantity","preferred_supplier","lead_time_days","is_active","rule_key"],
+ "fields": [
+  {"fieldname":"rule_section","fieldtype":"Section Break","label":"Reorder Rule"},
+  {"fieldname":"branch","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Branch","options":"Ledgix Branch","reqd":1},
+  {"fieldname":"stock_location","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Stock Location","options":"Ledgix Stock Location","reqd":1},
+  {"fieldname":"item","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Item","options":"Ledgix Item","reqd":1},
+  {"fieldname":"rule_column","fieldtype":"Column Break"},
+  {"default":"0","fieldname":"minimum_quantity","fieldtype":"Float","in_list_view":1,"label":"Minimum Quantity","precision":"6"},
+  {"default":"0","fieldname":"target_quantity","fieldtype":"Float","in_list_view":1,"label":"Target Quantity","precision":"6","reqd":1},
+  {"fieldname":"preferred_supplier","fieldtype":"Link","in_standard_filter":1,"label":"Preferred Supplier","options":"Ledgix Supplier"},
+  {"default":"0","fieldname":"lead_time_days","fieldtype":"Int","label":"Lead Time (Days)"},
+  {"default":"1","fieldname":"is_active","fieldtype":"Check","in_list_view":1,"in_standard_filter":1,"label":"Active"},
+  {"fieldname":"rule_key","fieldtype":"Data","hidden":1,"label":"Rule Key","read_only":1,"unique":1}
+ ],
+ "grid_page_length":50,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Reorder Rule",
+ "naming_rule":"By fieldname",
+ "permissions":[
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"System Manager","share":1,"write":1},
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Admin","share":1,"write":1},
+  {"create":1,"delete":0,"email":0,"export":1,"print":1,"read":1,"report":1,"role":"Ledgix Manager","share":0,"write":1}
+ ],
+ "search_fields":"branch,stock_location,item,preferred_supplier",
+ "sort_field":"modified",
+ "sort_order":"DESC",
+ "states":[],
+ "track_changes":1
+}
