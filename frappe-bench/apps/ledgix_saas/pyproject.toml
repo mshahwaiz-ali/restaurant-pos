@@ -77,6 +77,7 @@ packages = [
     "ledgix.doctype.ledgix_branch",
     "ledgix.doctype.ledgix_stock_location",
     "ledgix.doctype.ledgix_stock_balance",
+    "ledgix.doctype.ledgix_user_branch_access",
 ]
 
 [tool.setuptools.package-dir]

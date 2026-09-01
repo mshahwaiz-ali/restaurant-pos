@@ -7,16 +7,22 @@ from frappe import _
 PRIVILEGED_ROLES = {"System Manager", "Ledgix Admin"}
 
 
+def _profile_branch_fields_available():
+	meta = frappe.get_meta("Ledgix User Profile")
+	return meta.has_field("default_branch") and meta.has_field("allowed_branches")
+
+
 def get_default_branch(user=None):
 	user = user or frappe.session.user
-	profile = frappe.db.get_value(
-		"Ledgix User Profile",
-		{"user": user, "is_active": 1},
-		["name", "default_branch"],
-		as_dict=True,
-	)
-	if profile and profile.default_branch:
-		return profile.default_branch
+	if _profile_branch_fields_available():
+		profile = frappe.db.get_value(
+			"Ledgix User Profile",
+			{"user": user, "is_active": 1},
+			["name", "default_branch"],
+			as_dict=True,
+		)
+		if profile and profile.default_branch:
+			return profile.default_branch
 
 	return frappe.db.get_value(
 		"Ledgix Branch",
@@ -62,6 +68,10 @@ def get_allowed_branches(user=None):
 			pluck="name",
 			limit_page_length=0,
 		)
+
+	if not _profile_branch_fields_available():
+		fallback = get_default_branch(user)
+		return [fallback] if fallback else []
 
 	profile = frappe.db.get_value(
 		"Ledgix User Profile",

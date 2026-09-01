@@ -20,6 +20,7 @@ def execute():
 	branch = _ensure_default_branch(brand)
 	location = _ensure_default_location(branch)
 	_ensure_branch_default_location(branch, location)
+	_seed_user_branch_access(branch, location)
 	_seed_stock_balances(branch, location)
 
 
@@ -79,6 +80,27 @@ def _ensure_branch_default_location(branch, location):
 		location,
 		update_modified=False,
 	)
+
+
+def _seed_user_branch_access(branch, location):
+	meta = frappe.get_meta("Ledgix User Profile")
+	if not meta.has_field("default_branch") or not meta.has_field("allowed_branches"):
+		return
+
+	for profile_name in frappe.get_all("Ledgix User Profile", pluck="name", limit_page_length=0):
+		profile = frappe.get_doc("Ledgix User Profile", profile_name)
+		changed = False
+		if not profile.default_branch:
+			profile.default_branch = branch
+			changed = True
+		if meta.has_field("default_stock_location") and not profile.default_stock_location:
+			profile.default_stock_location = location
+			changed = True
+		if not any(row.branch == branch for row in profile.allowed_branches):
+			profile.append("allowed_branches", {"branch": branch})
+			changed = True
+		if changed:
+			profile.save(ignore_permissions=True)
 
 
 def _seed_stock_balances(branch, location):

@@ -12,133 +12,44 @@
   "role_profile",
   "mobile_number",
   "is_active",
+  "branch_access_section",
+  "default_branch",
+  "default_stock_location",
+  "allowed_branches",
   "permissions_and_access_section",
   "can_access_pos",
   "can_manage_inventory",
   "can_view_reports"
  ],
  "fields": [
-  {
-   "fieldname": "user_profile_section",
-   "fieldtype": "Section Break",
-   "label": "User Profile"
-  },
-  {
-   "fieldname": "user",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "User",
-   "options": "User",
-   "reqd": 1,
-   "unique": 1
-  },
-  {
-   "fetch_from": "user.full_name",
-   "fieldname": "full_name",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Full Name",
-   "read_only": 1
-  },
-  {
-   "fieldname": "role_profile",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Role Profile",
-   "options": "Role Profile"
-  },
-  {
-   "fetch_from": "user.mobile_no",
-   "fieldname": "mobile_number",
-   "fieldtype": "Data",
-   "label": "Mobile Number"
-  },
-  {
-   "default": "Checked",
-   "fieldname": "is_active",
-   "fieldtype": "Check",
-   "in_list_view": 1,
-   "label": "Is Active"
-  },
-  {
-   "fieldname": "permissions_and_access_section",
-   "fieldtype": "Section Break",
-   "label": "Permissions and Access"
-  },
-  {
-   "default": "Checked",
-   "fieldname": "can_access_pos",
-   "fieldtype": "Check",
-   "label": "Can Access POS"
-  },
-  {
-   "default": "0",
-   "fieldname": "can_manage_inventory",
-   "fieldtype": "Check",
-   "label": "Can Manage Inventory"
-  },
-  {
-   "default": "0",
-   "fieldname": "can_view_reports",
-   "fieldtype": "Check",
-   "label": "Can View Reports"
-  }
+  {"fieldname":"user_profile_section","fieldtype":"Section Break","label":"User Profile"},
+  {"fieldname":"user","fieldtype":"Link","in_list_view":1,"label":"User","options":"User","reqd":1,"unique":1},
+  {"fetch_from":"user.full_name","fieldname":"full_name","fieldtype":"Data","in_list_view":1,"label":"Full Name","read_only":1},
+  {"fieldname":"role_profile","fieldtype":"Link","in_list_view":1,"label":"Role Profile","options":"Role Profile"},
+  {"fetch_from":"user.mobile_no","fieldname":"mobile_number","fieldtype":"Data","label":"Mobile Number"},
+  {"default":"Checked","fieldname":"is_active","fieldtype":"Check","in_list_view":1,"label":"Is Active"},
+  {"fieldname":"branch_access_section","fieldtype":"Section Break","label":"Branch Access"},
+  {"fieldname":"default_branch","fieldtype":"Link","in_standard_filter":1,"label":"Default Branch","options":"Ledgix Branch"},
+  {"fieldname":"default_stock_location","fieldtype":"Link","label":"Default Stock Location","options":"Ledgix Stock Location"},
+  {"fieldname":"allowed_branches","fieldtype":"Table","label":"Allowed Branches","options":"Ledgix User Branch Access"},
+  {"fieldname":"permissions_and_access_section","fieldtype":"Section Break","label":"Permissions and Access"},
+  {"default":"Checked","fieldname":"can_access_pos","fieldtype":"Check","label":"Can Access POS"},
+  {"default":"0","fieldname":"can_manage_inventory","fieldtype":"Check","label":"Can Manage Inventory"},
+  {"default":"0","fieldname":"can_view_reports","fieldtype":"Check","label":"Can View Reports"}
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-14 16:24:36.759427",
+ "modified": "2026-09-01 09:35:00.000000",
  "modified_by": "Administrator",
  "module": "Ledgix",
  "name": "Ledgix User Profile",
  "naming_rule": "By fieldname",
  "owner": "alishahwaiz96@gmail.com",
  "permissions": [
-  {
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 1,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
-   "export": 1,
-   "share": 1,
-   "print": 1,
-   "email": 1,
-   "role": "System Manager"
-  },
-  {
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 1,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
-   "export": 1,
-   "share": 1,
-   "print": 1,
-   "email": 1,
-   "role": "Ledgix Admin"
-  },
-  {
-   "read": 1,
-   "write": 0,
-   "create": 0,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 0,
-   "export": 0,
-   "share": 0,
-   "print": 1,
-   "email": 0,
-   "role": "Ledgix Manager"
-  }
+  {"read":1,"write":1,"create":1,"delete":1,"submit":0,"cancel":0,"amend":0,"report":1,"export":1,"share":1,"print":1,"email":1,"role":"System Manager"},
+  {"read":1,"write":1,"create":1,"delete":1,"submit":0,"cancel":0,"amend":0,"report":1,"export":1,"share":1,"print":1,"email":1,"role":"Ledgix Admin"},
+  {"read":1,"write":0,"create":0,"delete":0,"submit":0,"cancel":0,"amend":0,"report":0,"export":0,"share":0,"print":1,"email":0,"role":"Ledgix Manager"}
  ],
  "row_format": "Dynamic",
  "rows_threshold_for_grid_search": 20,
