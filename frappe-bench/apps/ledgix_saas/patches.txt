@@ -16,3 +16,4 @@ ledgix_saas.patches.v1_0.add_stock_adjustment_snapshot
 ledgix_saas.patches.v1_0.add_branch_context_to_pos_holds
 ledgix_saas.patches.v1_0.add_restaurant_scope_indexes
 ledgix_saas.patches.v1_0.add_restaurant_settlement_lineage
+ledgix_saas.patches.v1_0.add_purchase_order_lineage
