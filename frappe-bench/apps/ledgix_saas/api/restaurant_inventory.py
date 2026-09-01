@@ -180,10 +180,16 @@ def record_stock_count(
 	doc.count_type = count_type or "Cycle Count"
 	doc.notes = notes
 	for row in _rows(items):
-		counted_quantity = row.get("counted_quantity") if "counted_quantity" in row else row.get("quantity")
+		if "counted_quantity" in row:
+			counted_quantity = row.get("counted_quantity")
+		elif "quantity" in row:
+			counted_quantity = row.get("quantity")
+		else:
+			frappe.throw(f"Counted Quantity is required for Stock Count item {row.get('item') or ''}.")
 		doc.append("items", {
 			"item": row.get("item"),
 			"counted_quantity": flt(counted_quantity),
+			"count_confirmed": 1,
 			"uom": row.get("uom"),
 		})
 	doc.insert(ignore_permissions=True)
