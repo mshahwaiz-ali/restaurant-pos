@@ -1,0 +1,49 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:PO-{#####}",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "is_submittable": 1,
+ "field_order": [
+  "context_section","supplier","order_date","expected_date","context_column","branch","stock_location","status","client_purchase_order_id","supplier_reference",
+  "items_section","items","totals_section","total_stock_quantity","subtotal","received_section","received_percent","notes_section","notes","amended_from"
+ ],
+ "fields": [
+  {"fieldname":"context_section","fieldtype":"Section Break","label":"Purchase Order"},
+  {"fieldname":"supplier","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Supplier","options":"Ledgix Supplier","reqd":1},
+  {"fieldname":"order_date","fieldtype":"Date","in_list_view":1,"in_standard_filter":1,"label":"Order Date","reqd":1},
+  {"fieldname":"expected_date","fieldtype":"Date","in_standard_filter":1,"label":"Expected Date"},
+  {"fieldname":"context_column","fieldtype":"Column Break"},
+  {"fieldname":"branch","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Branch","options":"Ledgix Branch","reqd":1},
+  {"fieldname":"stock_location","fieldtype":"Link","in_standard_filter":1,"label":"Receiving Location","options":"Ledgix Stock Location","reqd":1},
+  {"default":"Draft","fieldname":"status","fieldtype":"Select","in_list_view":1,"in_standard_filter":1,"label":"Status","options":"Draft\nOpen\nPartially Received\nReceived\nCancelled","read_only":1},
+  {"fieldname":"client_purchase_order_id","fieldtype":"Data","hidden":1,"label":"Client Purchase Order ID","no_copy":1,"unique":1},
+  {"fieldname":"supplier_reference","fieldtype":"Data","label":"Supplier Reference"},
+  {"fieldname":"items_section","fieldtype":"Section Break","label":"Items"},
+  {"fieldname":"items","fieldtype":"Table","label":"Items","options":"Ledgix Purchase Order Item","reqd":1},
+  {"fieldname":"totals_section","fieldtype":"Section Break","label":"Totals"},
+  {"default":"0","fieldname":"total_stock_quantity","fieldtype":"Float","label":"Ordered Stock Quantity","precision":"6","read_only":1},
+  {"default":"0","fieldname":"subtotal","fieldtype":"Currency","in_list_view":1,"label":"Order Total","precision":"2","read_only":1},
+  {"fieldname":"received_section","fieldtype":"Section Break","label":"Receiving"},
+  {"default":"0","fieldname":"received_percent","fieldtype":"Percent","in_list_view":1,"label":"Received %","read_only":1},
+  {"fieldname":"notes_section","fieldtype":"Section Break","label":"Notes"},
+  {"fieldname":"notes","fieldtype":"Small Text","label":"Notes"},
+  {"fieldname":"amended_from","fieldtype":"Link","label":"Amended From","no_copy":1,"options":"Ledgix Purchase Order","print_hide":1,"read_only":1,"search_index":1}
+ ],
+ "grid_page_length":50,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Purchase Order",
+ "naming_rule":"Expression (old style)",
+ "permissions":[
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"submit":1,"cancel":1,"amend":1,"role":"System Manager","share":1,"write":1},
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"submit":1,"cancel":1,"amend":1,"role":"Ledgix Admin","share":1,"write":1},
+  {"create":1,"delete":0,"email":0,"export":1,"print":1,"read":1,"report":1,"submit":1,"cancel":1,"amend":1,"role":"Ledgix Manager","share":0,"write":1}
+ ],
+ "search_fields":"supplier,branch,stock_location,supplier_reference",
+ "sort_field":"order_date",
+ "sort_order":"DESC",
+ "states":[],
+ "track_changes":1
+}
