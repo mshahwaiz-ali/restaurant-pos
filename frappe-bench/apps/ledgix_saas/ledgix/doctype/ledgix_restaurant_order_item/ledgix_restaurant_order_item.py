@@ -13,12 +13,21 @@ SNAPSHOT_FIELDS = (
 	"menu_item",
 	"item",
 	"display_name_snapshot",
+	"price_list_snapshot",
+	"item_price_reference",
+	"list_rate",
 	"rate",
 	"modifier_unit_total",
 	"line_unit_rate",
 	"recipe",
 	"recipe_version",
 	"recipe_cost_per_unit",
+	"item_tax_profile_snapshot",
+	"tax_category_snapshot",
+	"tax_basis_snapshot",
+	"tax_rate_snapshot",
+	"notified_retail_price_snapshot",
+	"price_includes_tax_snapshot",
 )
 OPERATIONAL_FIELDS = (
 	"quantity",
@@ -56,7 +65,7 @@ class LedgixRestaurantOrderItem(Document):
 	"""Stable operational restaurant line.
 
 	The row is intentionally a standalone DocType. Creation and operational
-	mutations must pass through the restaurant-order service so pricing,
+	mutations must pass through the restaurant-order service so pricing, tax,
 	modifiers, branch access and later kitchen invariants cannot be bypassed by a
 	direct document write.
 	"""
@@ -163,9 +172,9 @@ class LedgixRestaurantOrderItem(Document):
 		if not changed and not modifiers_changed:
 			return
 		if not getattr(self.flags, "allow_snapshot_refresh", False):
-			frappe.throw("Restaurant Order Item price/recipe/modifier snapshots are immutable outside the operational service.")
+			frappe.throw("Restaurant Order Item price/tax/recipe/modifier snapshots are immutable outside the operational service.")
 		if self._is_kitchen_protected(before):
-			frappe.throw("Price, recipe or modifier snapshots cannot change after an item has been fired to the kitchen.")
+			frappe.throw("Price, tax, recipe or modifier snapshots cannot change after an item has been fired to the kitchen.")
 
 	def _validate_quantities(self):
 		quantity = flt(self.quantity, 6)
