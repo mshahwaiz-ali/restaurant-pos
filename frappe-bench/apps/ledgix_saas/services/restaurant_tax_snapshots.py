@@ -46,47 +46,24 @@ def _mapping(item):
 		"Ledgix Item Tax Profile",
 		{"item": item, "active": 1},
 		[
-			"name",
-			"tax_category",
-			"taxable",
-			"tax_basis",
-			"notified_retail_price",
-			"hs_code",
-			"uom_for_fbr",
-			"sales_type",
-			"fbr_rate_description",
-			"scenario_id",
-			"sro_schedule_number",
-			"sro_item_serial_number",
-			"sales_tax_withheld_at_source_per_unit",
-			"extra_tax_per_unit",
-			"further_tax_per_unit",
-			"fed_payable_per_unit",
+			"name", "tax_category", "taxable", "tax_basis", "notified_retail_price",
+			"hs_code", "uom_for_fbr", "sales_type", "fbr_rate_description", "scenario_id",
+			"sro_schedule_number", "sro_item_serial_number",
+			"sales_tax_withheld_at_source_per_unit", "extra_tax_per_unit",
+			"further_tax_per_unit", "fed_payable_per_unit",
 		],
 		as_dict=True,
 		order_by="modified desc",
 	)
 
 
-def _posting_date_for_order_item(doc, posting_date=None):
-	if posting_date:
-		return getdate(posting_date)
-	if not doc.get("restaurant_order"):
-		return None
-	opened_at = frappe.db.get_value("Ledgix Restaurant Order", doc.restaurant_order, "opened_at")
-	return getdate(opened_at) if opened_at else None
-
-
-def capture_restaurant_item_tax_snapshot(doc, posting_date=None):
-	"""Lock every fiscal value needed to settle/FBR-post this order item later."""
-	if cint(doc.get("tax_snapshot_locked")):
-		return
-
-	posting_date = _posting_date_for_order_item(doc, posting_date)
+def build_item_fiscal_context(item, posting_date=None):
+	"""Return immutable fiscal classification values for a new restaurant line."""
+	posting_date = getdate(posting_date) if posting_date else None
 	profile = get_tax_profile()
-	mapping = _mapping(doc.item)
+	mapping = _mapping(item)
 	if not is_tax_enabled():
-		values = {
+		return {
 			"item_tax_profile_snapshot": None,
 			"tax_category_snapshot": None,
 			"tax_basis_snapshot": "Transaction Value",
@@ -105,35 +82,50 @@ def capture_restaurant_item_tax_snapshot(doc, posting_date=None):
 			"sro_schedule_number_snapshot": None,
 			"sro_item_serial_number_snapshot": None,
 		}
-	else:
-		ctx = resolve_item_tax_context(doc.item, profile=profile)
-		tax_category = (mapping.get("tax_category") if mapping else None) or ctx.get("tax_category")
-		taxable = cint(mapping.get("taxable")) if mapping else cint(ctx.get("taxable", 1))
-		rate = resolve_tax_rate(tax_category, posting_date=posting_date, applies_to="Sales") if taxable else 0
-		tax_basis = (mapping.get("tax_basis") if mapping else None) or "Transaction Value"
-		notified = flt(mapping.get("notified_retail_price") if mapping else 0)
-		if tax_basis == "Notified Retail Price" and notified <= 0:
-			frappe.throw(f"Notified Retail Price is required for Third Schedule item {doc.item}.")
-		values = {
-			"item_tax_profile_snapshot": mapping.name if mapping else None,
-			"tax_category_snapshot": tax_category,
-			"tax_basis_snapshot": tax_basis,
-			"tax_rate_snapshot": flt(rate, 2),
-			"notified_retail_price_snapshot": notified if tax_basis == "Notified Retail Price" else 0,
-			"price_includes_tax_snapshot": 1 if profile.get("price_includes_tax") else 0,
-			"fbr_rate_description_snapshot": str((mapping.get("fbr_rate_description") if mapping else "") or "").strip() or _format_tax_rate(rate),
-			"sales_tax_withheld_at_source_per_unit_snapshot": flt(mapping.get("sales_tax_withheld_at_source_per_unit") if mapping else 0, 2),
-			"extra_tax_per_unit_snapshot": flt(mapping.get("extra_tax_per_unit") if mapping else 0, 2),
-			"further_tax_per_unit_snapshot": flt(mapping.get("further_tax_per_unit") if mapping else 0, 2),
-			"fed_payable_per_unit_snapshot": flt(mapping.get("fed_payable_per_unit") if mapping else 0, 2),
-			"hs_code_snapshot": (mapping.get("hs_code") if mapping else None) or ctx.get("hs_code"),
-			"uom_for_fbr_snapshot": (mapping.get("uom_for_fbr") if mapping else None) or ctx.get("uom_for_fbr"),
-			"sales_type_snapshot": (mapping.get("sales_type") if mapping else None) or ctx.get("sales_type"),
-			"scenario_id_snapshot": (mapping.get("scenario_id") if mapping else None) or ctx.get("scenario_id"),
-			"sro_schedule_number_snapshot": (mapping.get("sro_schedule_number") if mapping else None) or ctx.get("sro_schedule_number"),
-			"sro_item_serial_number_snapshot": (mapping.get("sro_item_serial_number") if mapping else None) or ctx.get("sro_item_serial_number"),
-		}
 
+	ctx = resolve_item_tax_context(item, profile=profile)
+	tax_category = (mapping.get("tax_category") if mapping else None) or ctx.get("tax_category")
+	taxable = cint(mapping.get("taxable")) if mapping else cint(ctx.get("taxable", 1))
+	rate = resolve_tax_rate(tax_category, posting_date=posting_date, applies_to="Sales") if taxable else 0
+	tax_basis = (mapping.get("tax_basis") if mapping else None) or "Transaction Value"
+	notified = flt(mapping.get("notified_retail_price") if mapping else 0)
+	if tax_basis == "Notified Retail Price" and notified <= 0:
+		frappe.throw(f"Notified Retail Price is required for Third Schedule item {item}.")
+	return {
+		"item_tax_profile_snapshot": mapping.name if mapping else None,
+		"tax_category_snapshot": tax_category,
+		"tax_basis_snapshot": tax_basis,
+		"tax_rate_snapshot": flt(rate, 2),
+		"notified_retail_price_snapshot": notified if tax_basis == "Notified Retail Price" else 0,
+		"price_includes_tax_snapshot": 1 if profile.get("price_includes_tax") else 0,
+		"fbr_rate_description_snapshot": str((mapping.get("fbr_rate_description") if mapping else "") or "").strip() or _format_tax_rate(rate),
+		"sales_tax_withheld_at_source_per_unit_snapshot": flt(mapping.get("sales_tax_withheld_at_source_per_unit") if mapping else 0, 2),
+		"extra_tax_per_unit_snapshot": flt(mapping.get("extra_tax_per_unit") if mapping else 0, 2),
+		"further_tax_per_unit_snapshot": flt(mapping.get("further_tax_per_unit") if mapping else 0, 2),
+		"fed_payable_per_unit_snapshot": flt(mapping.get("fed_payable_per_unit") if mapping else 0, 2),
+		"hs_code_snapshot": (mapping.get("hs_code") if mapping else None) or ctx.get("hs_code"),
+		"uom_for_fbr_snapshot": (mapping.get("uom_for_fbr") if mapping else None) or ctx.get("uom_for_fbr"),
+		"sales_type_snapshot": (mapping.get("sales_type") if mapping else None) or ctx.get("sales_type"),
+		"scenario_id_snapshot": (mapping.get("scenario_id") if mapping else None) or ctx.get("scenario_id"),
+		"sro_schedule_number_snapshot": (mapping.get("sro_schedule_number") if mapping else None) or ctx.get("sro_schedule_number"),
+		"sro_item_serial_number_snapshot": (mapping.get("sro_item_serial_number") if mapping else None) or ctx.get("sro_item_serial_number"),
+	}
+
+
+def _posting_date_for_order_item(doc, posting_date=None):
+	if posting_date:
+		return getdate(posting_date)
+	if not doc.get("restaurant_order"):
+		return None
+	opened_at = frappe.db.get_value("Ledgix Restaurant Order", doc.restaurant_order, "opened_at")
+	return getdate(opened_at) if opened_at else None
+
+
+def capture_restaurant_item_tax_snapshot(doc, posting_date=None):
+	"""Lock every fiscal value needed to settle/FBR-post this order item later."""
+	if cint(doc.get("tax_snapshot_locked")):
+		return
+	values = build_item_fiscal_context(doc.item, _posting_date_for_order_item(doc, posting_date))
 	for fieldname, value in values.items():
 		doc.set(fieldname, value)
 	doc.tax_snapshot_locked = 1
@@ -145,11 +137,11 @@ def recalculate_restaurant_item_tax(doc):
 	qty = flt(doc.billable_quantity, 6)
 	transaction_amount = flt(doc.amount, 2)
 	tax_basis = doc.tax_basis_snapshot or "Transaction Value"
-	if tax_basis == "Notified Retail Price":
-		basis_amount = flt(flt(doc.notified_retail_price_snapshot) * qty, 2)
-	else:
-		basis_amount = transaction_amount
-
+	basis_amount = (
+		flt(flt(doc.notified_retail_price_snapshot) * qty, 2)
+		if tax_basis == "Notified Retail Price"
+		else transaction_amount
+	)
 	breakdown = calculate_tax_breakdown(
 		basis_amount,
 		flt(doc.tax_rate_snapshot),
