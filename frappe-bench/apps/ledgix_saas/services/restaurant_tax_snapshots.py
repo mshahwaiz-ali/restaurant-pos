@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import frappe
-from frappe.utils import cint, flt
+from frappe.utils import cint, flt, getdate
 
 from ledgix_saas.api.taxation import (
 	calculate_tax_breakdown,
@@ -68,11 +68,21 @@ def _mapping(item):
 	)
 
 
+def _posting_date_for_order_item(doc, posting_date=None):
+	if posting_date:
+		return getdate(posting_date)
+	if not doc.get("restaurant_order"):
+		return None
+	opened_at = frappe.db.get_value("Ledgix Restaurant Order", doc.restaurant_order, "opened_at")
+	return getdate(opened_at) if opened_at else None
+
+
 def capture_restaurant_item_tax_snapshot(doc, posting_date=None):
 	"""Lock every fiscal value needed to settle/FBR-post this order item later."""
 	if cint(doc.get("tax_snapshot_locked")):
 		return
 
+	posting_date = _posting_date_for_order_item(doc, posting_date)
 	profile = get_tax_profile()
 	mapping = _mapping(doc.item)
 	if not is_tax_enabled():
