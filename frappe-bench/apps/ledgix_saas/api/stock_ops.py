@@ -2,7 +2,7 @@ import frappe
 from frappe.utils import flt, now_datetime
 
 from ledgix_saas.api.security import require_ledgix_manager_or_above
-from ledgix_saas.api.stock_identity import (
+from ledgix_saas.api.stock_identity_location import (
     create_stock_lot_from_manual_entry,
     create_stock_serials_for_manual_entry,
     is_lot_based_item,
