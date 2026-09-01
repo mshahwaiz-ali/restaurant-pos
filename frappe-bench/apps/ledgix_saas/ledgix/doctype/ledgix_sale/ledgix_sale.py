@@ -24,8 +24,9 @@ class LedgixSale(Document):
             apply_item_snapshots(self)
 
         self.validate_channel_requirements()
-        self.validate_stock()
+        self.apply_operating_context()
         self.validate_pos_shift()
+        self.validate_stock()
         self.calculate_totals()
 
         tax_result = apply_sale_tax_snapshot(self)
@@ -53,6 +54,33 @@ class LedgixSale(Document):
         if self.sale_channel == "B2B" and self.customer == "Walk-in Customer":
             frappe.throw("B2B sales require a named business customer.")
 
+    def apply_operating_context(self):
+        from ledgix_saas.services.organization import resolve_branch_location
+
+        branch = getattr(self, "branch", None)
+        stock_location = getattr(self, "stock_location", None)
+
+        if self.pos_shift:
+            shift = frappe.db.get_value(
+                "Ledgix POS Shift",
+                self.pos_shift,
+                ["branch", "stock_location"],
+                as_dict=True,
+            )
+            if shift:
+                if branch and shift.branch and branch != shift.branch:
+                    frappe.throw("Sale Branch must match the selected POS Shift Branch.")
+                if stock_location and shift.stock_location and stock_location != shift.stock_location:
+                    frappe.throw("Sale Stock Location must match the selected POS Shift Stock Location.")
+                branch = branch or shift.branch
+                stock_location = stock_location or shift.stock_location
+
+        self.branch, self.stock_location = resolve_branch_location(
+            branch,
+            stock_location,
+            purpose="consumption",
+        )
+
     def validate_pos_shift(self):
         # Retail checkout is shift-bound. B2B back-office invoices may be created
         # without a register shift, while a B2B sale created from POS may still carry one.
@@ -65,6 +93,10 @@ class LedgixSale(Document):
         shift = frappe.get_doc("Ledgix POS Shift", self.pos_shift)
         if shift.docstatus != 0 or shift.status != "Open":
             frappe.throw("Selected POS Shift is not open. Please open a new shift.")
+        if getattr(shift, "branch", None) and shift.branch != self.branch:
+            frappe.throw("Selected POS Shift belongs to a different Branch.")
+        if getattr(shift, "stock_location", None) and shift.stock_location != self.stock_location:
+            frappe.throw("Selected POS Shift belongs to a different Stock Location.")
 
     def on_submit(self):
         self.status = "Submitted"
@@ -117,11 +149,25 @@ class LedgixSale(Document):
             self.invoice_number = frappe.model.naming.make_autoname("INV-.#####")
 
     def validate_stock(self):
+        from ledgix_saas.services.stock import get_location_stock
+
+        requested = {}
         for row in self.items:
-            from ledgix_saas.api.stock_identity import get_locked_current_stock
-            current_stock = get_locked_current_stock(row.item)
-            if flt(row.quantity) > current_stock:
-                frappe.throw(f"Not enough stock for item {row.item}. Available stock: {current_stock}")
+            if not row.item:
+                continue
+            requested[row.item] = flt(requested.get(row.item)) + flt(row.quantity)
+
+        for item, quantity in requested.items():
+            current_stock = get_location_stock(
+                item,
+                self.stock_location,
+                for_update=True,
+            )
+            if quantity > current_stock + 0.000001:
+                frappe.throw(
+                    f"Not enough stock for item {item} at {self.stock_location}. "
+                    f"Available stock: {current_stock:g}; requested: {quantity:g}."
+                )
 
     def calculate_totals(self):
         total_amount = 0
