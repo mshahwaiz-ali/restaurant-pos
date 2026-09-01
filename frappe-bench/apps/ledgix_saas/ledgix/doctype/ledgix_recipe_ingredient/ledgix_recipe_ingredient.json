@@ -1,0 +1,29 @@
+{
+ "actions": [],
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["ingredient_item","quantity","uom","stock_quantity","waste_percent","consumption_quantity","consume_stock","ingredient_cost"],
+ "fields": [
+  {"fieldname":"ingredient_item","fieldtype":"Link","in_list_view":1,"label":"Ingredient","options":"Ledgix Item","reqd":1},
+  {"fieldname":"quantity","fieldtype":"Float","in_list_view":1,"label":"Recipe Qty","precision":"6","reqd":1},
+  {"fieldname":"uom","fieldtype":"Link","in_list_view":1,"label":"UOM","options":"Ledgix UOM","reqd":1},
+  {"description":"Recipe quantity normalized to the ingredient Stock UOM before waste.","fieldname":"stock_quantity","fieldtype":"Float","label":"Stock Qty","precision":"6","read_only":1},
+  {"default":"0","description":"Expected preparation/trim loss percentage added to consumption and food cost.","fieldname":"waste_percent","fieldtype":"Percent","in_list_view":1,"label":"Waste %"},
+  {"description":"Stock quantity including configured waste factor.","fieldname":"consumption_quantity","fieldtype":"Float","in_list_view":1,"label":"Consumption Qty","precision":"6","read_only":1},
+  {"default":"1","description":"When disabled, the ingredient remains in costing/instructions but will not create a stock movement at kitchen fire.","fieldname":"consume_stock","fieldtype":"Check","label":"Consume Stock"},
+  {"description":"Current recipe-line cost snapshot at last recipe validation.","fieldname":"ingredient_cost","fieldtype":"Currency","in_list_view":1,"label":"Ingredient Cost","precision":"4","read_only":1}
+ ],
+ "grid_page_length":50,
+ "index_web_pages_for_search":1,
+ "istable":1,
+ "links":[],
+ "module":"Ledgix",
+ "name":"Ledgix Recipe Ingredient",
+ "permissions":[],
+ "row_format":"Dynamic",
+ "rows_threshold_for_grid_search":20,
+ "sort_field":"idx",
+ "sort_order":"ASC",
+ "states":[]
+}
