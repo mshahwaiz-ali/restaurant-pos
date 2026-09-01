@@ -34,13 +34,29 @@ class LedgixTableSession(Document):
 		self.floor = table.floor
 		if cint(self.covers) <= 0:
 			frappe.throw("Covers must be greater than zero.")
-		if self.server and not frappe.db.exists("User", {"name": self.server, "enabled": 1}):
-			frappe.throw("Server / Waiter must be an enabled User.")
+		if self.server:
+			if not frappe.db.exists("User", {"name": self.server, "enabled": 1}):
+				frappe.throw("Server / Waiter must be an enabled User.")
+			ensure_branch_access(self.branch, user=self.server)
 		if self.customer and not frappe.db.exists("Ledgix Customer", self.customer):
 			frappe.throw("Selected Customer does not exist.")
+		self._validate_unique_active_table_session()
 		self._validate_table_move()
 		self._validate_status_transition()
 		self._validate_closure()
+
+	def _validate_unique_active_table_session(self):
+		if self.status not in {"Open", "Closing"}:
+			return
+		filters = {
+			"restaurant_table": self.restaurant_table,
+			"status": ["in", ["Open", "Closing"]],
+		}
+		if self.name:
+			filters["name"] = ["!=", self.name]
+		existing = frappe.db.get_value("Ledgix Table Session", filters, "name", order_by="opened_at desc")
+		if existing:
+			frappe.throw(f"Restaurant Table already has active Table Session {existing}.")
 
 	def _validate_table_move(self):
 		before = self.get_doc_before_save()
