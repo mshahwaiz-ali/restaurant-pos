@@ -43,6 +43,8 @@ def _create_submitted_movement(
     qty,
     movement_source,
     reference_note,
+    branch,
+    stock_location,
     valuation_rate=None,
 ):
     if not frappe.db.exists("Ledgix Item", item):
@@ -54,6 +56,8 @@ def _create_submitted_movement(
 
     movement = frappe.new_doc("Ledgix Stock Movement")
     movement.item = item
+    movement.branch = branch
+    movement.stock_location = stock_location
     movement.movement_type = movement_type
     movement.quantity = qty
     movement.valuation_rate = _current_cost(item) if valuation_rate is None else max(flt(valuation_rate), 0)
@@ -67,7 +71,15 @@ def _create_submitted_movement(
 
 
 @frappe.whitelist()
-def manual_stock_entry(item, qty_in=0, qty_out=0, serial_numbers=None, note=None):
+def manual_stock_entry(
+    item,
+    qty_in=0,
+    qty_out=0,
+    serial_numbers=None,
+    note=None,
+    branch=None,
+    stock_location=None,
+):
     require_ledgix_manager_or_above()
     qty_in = flt(qty_in)
     qty_out = flt(qty_out)
@@ -83,6 +95,15 @@ def manual_stock_entry(item, qty_in=0, qty_out=0, serial_numbers=None, note=None
 
     if qty_in > 0 and qty_out > 0:
         frappe.throw("Enter either Add Stock or Remove Stock, not both at the same time.")
+
+    from ledgix_saas.services.organization import resolve_branch_location
+
+    purpose = "receiving" if qty_in > 0 else "consumption"
+    branch, stock_location = resolve_branch_location(
+        branch,
+        stock_location,
+        purpose=purpose,
+    )
 
     if is_serial_based_item(item) and qty_out > 0:
         frappe.throw(
@@ -101,6 +122,8 @@ def manual_stock_entry(item, qty_in=0, qty_out=0, serial_numbers=None, note=None
             movement_source="Manual IN",
             source_label="Manual IN",
             note=note,
+            branch=branch,
+            stock_location=stock_location,
         )
         created.append(result.get("movement_name"))
         lot_name = result.get("lot_name")
@@ -113,26 +136,44 @@ def manual_stock_entry(item, qty_in=0, qty_out=0, serial_numbers=None, note=None
             movement_source="Manual OUT",
             source_label="Manual OUT",
             note=note,
+            branch=branch,
+            stock_location=stock_location,
         )
         created.append(movement_name)
 
-    current_stock = frappe.db.get_value("Ledgix Item", item, "current_stock")
+    from ledgix_saas.services.stock import get_location_stock, get_total_stock
 
     return {
         "item": item,
+        "branch": branch,
+        "stock_location": stock_location,
         "movements": created,
         "lot_name": lot_name,
         "serial_count": serial_count,
-        "current_stock": flt(current_stock),
+        "current_stock": get_location_stock(item, stock_location),
+        "aggregate_stock": get_total_stock(item),
     }
 
 
 @frappe.whitelist()
-def record_opening_stock(item, qty, serial_numbers=None):
+def record_opening_stock(
+    item,
+    qty,
+    serial_numbers=None,
+    branch=None,
+    stock_location=None,
+):
     require_ledgix_manager_or_above()
     if flt(qty) <= 0:
         return None
 
+    from ledgix_saas.services.organization import resolve_branch_location
+
+    branch, stock_location = resolve_branch_location(
+        branch,
+        stock_location,
+        purpose="receiving",
+    )
     result = _apply_stock_in(
         item=item,
         qty=flt(qty),
@@ -140,11 +181,22 @@ def record_opening_stock(item, qty, serial_numbers=None):
         movement_source="Opening",
         source_label="Opening Stock",
         note=None,
+        branch=branch,
+        stock_location=stock_location,
     )
     return result.get("movement_name")
 
 
-def _apply_stock_in(item, qty, serial_numbers, movement_source, source_label, note=None):
+def _apply_stock_in(
+    item,
+    qty,
+    serial_numbers,
+    movement_source,
+    source_label,
+    note=None,
+    branch=None,
+    stock_location=None,
+):
     qty = flt(qty)
     reference_note = _movement_note(source_label, note)
     lot_name = None
@@ -157,6 +209,8 @@ def _apply_stock_in(item, qty, serial_numbers, movement_source, source_label, no
             qty=qty,
             serial_numbers=serial_numbers,
             cost_rate=cost_rate,
+            branch=branch,
+            stock_location=stock_location,
         )
 
     movement = _create_submitted_movement(
@@ -166,6 +220,8 @@ def _apply_stock_in(item, qty, serial_numbers, movement_source, source_label, no
         movement_source=movement_source,
         reference_note=reference_note,
         valuation_rate=cost_rate,
+        branch=branch,
+        stock_location=stock_location,
     )
 
     if is_lot_based_item(item):
@@ -174,6 +230,8 @@ def _apply_stock_in(item, qty, serial_numbers, movement_source, source_label, no
             qty=qty,
             rate=cost_rate,
             movement_name=movement.name,
+            branch=branch,
+            stock_location=stock_location,
         )
 
     return {
@@ -183,13 +241,21 @@ def _apply_stock_in(item, qty, serial_numbers, movement_source, source_label, no
     }
 
 
-def _apply_stock_out(item, qty, movement_source, source_label, note=None):
+def _apply_stock_out(
+    item,
+    qty,
+    movement_source,
+    source_label,
+    note=None,
+    branch=None,
+    stock_location=None,
+):
     qty = flt(qty)
     reference_note = _movement_note(source_label, note)
     cost_rate = _current_cost(item)
 
     if is_lot_based_item(item):
-        reduce_lots_fifo_for_manual_out(item, qty)
+        reduce_lots_fifo_for_manual_out(item, qty, stock_location=stock_location)
 
     movement = _create_submitted_movement(
         item=item,
@@ -198,5 +264,7 @@ def _apply_stock_out(item, qty, movement_source, source_label, note=None):
         movement_source=movement_source,
         reference_note=reference_note,
         valuation_rate=cost_rate,
+        branch=branch,
+        stock_location=stock_location,
     )
     return movement.name
