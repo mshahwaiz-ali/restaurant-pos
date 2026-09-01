@@ -3,9 +3,12 @@
 
 import frappe
 
+from ledgix_saas.services.organization import get_allowed_branches
+
 
 def execute(filters=None):
-	filters = filters or {}
+	filters = frappe._dict(filters or {})
+	_prepare_scope(filters)
 
 	columns = get_columns()
 	data = get_data(filters)
@@ -22,11 +25,30 @@ def execute(filters=None):
 	return columns, data, message, None, summary
 
 
+def _prepare_scope(filters):
+	allowed = get_allowed_branches()
+	if filters.get("branch"):
+		if filters.branch not in allowed:
+			frappe.throw("You are not allowed to view sales for this Branch.", frappe.PermissionError)
+		allowed = [filters.branch]
+	filters.allowed_branches = tuple(allowed or ["__NO_ALLOWED_BRANCH__"])
+
+	if filters.get("stock_location"):
+		location_branch = frappe.db.get_value("Ledgix Stock Location", filters.stock_location, "branch")
+		if not location_branch or location_branch not in allowed:
+			frappe.throw("You are not allowed to view this Stock Location.", frappe.PermissionError)
+		if filters.get("branch") and location_branch != filters.branch:
+			frappe.throw("Stock Location does not belong to the selected Branch.")
+
+
 def get_columns():
 	return [
 		{"label": "Sale ID", "fieldname": "sale", "fieldtype": "Link", "options": "Ledgix Sale", "width": 135},
 		{"label": "Invoice No", "fieldname": "invoice_number", "fieldtype": "Data", "width": 130},
 		{"label": "Date", "fieldname": "sale_date", "fieldtype": "Date", "width": 105},
+		{"label": "Branch", "fieldname": "branch", "fieldtype": "Link", "options": "Ledgix Branch", "width": 120},
+		{"label": "Stock Location", "fieldname": "stock_location", "fieldtype": "Link", "options": "Ledgix Stock Location", "width": 145},
+		{"label": "Channel", "fieldname": "sale_channel", "fieldtype": "Data", "width": 95},
 		{"label": "Customer", "fieldname": "customer", "fieldtype": "Link", "options": "Ledgix Customer", "width": 180},
 		{"label": "Status", "fieldname": "status", "fieldtype": "Data", "width": 105},
 		{"label": "Items", "fieldname": "items_count", "fieldtype": "Int", "width": 80},
@@ -48,6 +70,9 @@ def get_data(filters):
 			s.name AS sale,
 			s.invoice_number,
 			s.sale_date,
+			s.branch,
+			s.stock_location,
+			s.sale_channel,
 			s.customer,
 			CASE
 				WHEN s.docstatus = 0 THEN 'Draft'
@@ -66,13 +91,15 @@ def get_data(filters):
 			s.name AS view_action,
 			s.name AS print_action
 		FROM `tabLedgix Sale` s
-		LEFT JOIN `tabLedgix Sale Item` si
-			ON si.parent = s.name
+		LEFT JOIN `tabLedgix Sale Item` si ON si.parent = s.name
 		WHERE {conditions}
 		GROUP BY
 			s.name,
 			s.invoice_number,
 			s.sale_date,
+			s.branch,
+			s.stock_location,
+			s.sale_channel,
 			s.customer,
 			s.docstatus,
 			s.total_amount,
@@ -85,25 +112,25 @@ def get_data(filters):
 
 
 def get_conditions(filters):
-	conditions = ["1=1"]
+	conditions = ["s.branch IN %(allowed_branches)s"]
 
+	if filters.get("branch"):
+		conditions.append("s.branch = %(branch)s")
+	if filters.get("stock_location"):
+		conditions.append("s.stock_location = %(stock_location)s")
 	if filters.get("from_date"):
 		conditions.append("s.sale_date >= %(from_date)s")
-
 	if filters.get("to_date"):
 		conditions.append("s.sale_date <= %(to_date)s")
-
 	if filters.get("customer"):
 		conditions.append("s.customer = %(customer)s")
+	if filters.get("sale_channel"):
+		conditions.append("s.sale_channel = %(sale_channel)s")
 
 	if filters.get("docstatus"):
-		status_map = {
-			"Draft": 0,
-			"Submitted": 1,
-			"Cancelled": 2,
-		}
-		filters["docstatus"] = status_map.get(filters.get("docstatus"))
-		conditions.append("s.docstatus = %(docstatus)s")
+		status_map = {"Draft": 0, "Submitted": 1, "Cancelled": 2}
+		filters["docstatus_value"] = status_map.get(filters.get("docstatus"))
+		conditions.append("s.docstatus = %(docstatus_value)s")
 
 	return " AND ".join(conditions)
 
@@ -115,9 +142,11 @@ def get_report_summary(data):
 	total_amount = sum(row.get("total_amount") or 0 for row in data)
 	total_profit = sum(row.get("total_profit") or 0 for row in data)
 	avg_sale_value = total_amount / total_sales if total_sales else 0
+	branches = len({row.get("branch") for row in data if row.get("branch")})
 
 	return [
 		{"value": total_sales, "label": "Sales", "datatype": "Int"},
+		{"value": branches, "label": "Branches", "datatype": "Int"},
 		{"value": total_items, "label": "Line Items", "datatype": "Int"},
 		{"value": total_qty, "label": "Total Qty", "datatype": "Float"},
 		{"value": total_amount, "label": "Total Amount", "datatype": "Currency"},
