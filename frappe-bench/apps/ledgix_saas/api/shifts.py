@@ -16,15 +16,17 @@ def _has_field(doctype, fieldname):
 
 
 def _set_if_field(doc, fieldname, value):
-    if _has_field(doc.doctype, fieldname):
+    if value is not None and _has_field(doc.doctype, fieldname):
         doc.set(fieldname, value)
 
 
-def _get_open_shift_for_user(user=None):
+def _get_open_shift_for_user(user=None, branch=None):
     user = user or frappe.session.user
     filters = {"status": "Open", "docstatus": 0}
     if _has_field("Ledgix POS Shift", "opened_by"):
         filters["opened_by"] = user
+    if branch and _has_field("Ledgix POS Shift", "branch"):
+        filters["branch"] = branch
     return frappe.db.get_value(
         "Ledgix POS Shift",
         filters,
@@ -61,19 +63,23 @@ def get_active_shift_info():
     return {
         "has_active_shift": True,
         "shift_id": shift.name,
+        "branch": getattr(shift, "branch", None),
+        "stock_location": getattr(shift, "stock_location", None),
         "opening_cash": flt(shift.opening_cash, 2),
         **summary,
     }
 
 
 @frappe.whitelist()
-def open_pos_shift(opening_cash=0, notes=None):
+def open_pos_shift(opening_cash=0, notes=None, branch=None, stock_location=None):
     require_ledgix_cashier_or_above()
     existing_shift = _get_open_shift_for_user()
     if existing_shift:
         frappe.throw(f"Shift already open: {existing_shift}")
 
     shift = frappe.new_doc("Ledgix POS Shift")
+    _set_if_field(shift, "branch", branch)
+    _set_if_field(shift, "stock_location", stock_location)
     _set_if_field(shift, "opening_cash", max(flt(opening_cash), 0))
     if notes:
         _set_if_field(shift, "opening_notes", notes)
@@ -82,6 +88,8 @@ def open_pos_shift(opening_cash=0, notes=None):
     return {
         "success": True,
         "shift_id": shift.name,
+        "branch": getattr(shift, "branch", None),
+        "stock_location": getattr(shift, "stock_location", None),
         "opening_cash": flt(shift.opening_cash, 2),
         "expected_cash": flt(shift.expected_cash, 2),
         "message": "POS shift opened successfully",
@@ -114,9 +122,6 @@ def close_pos_shift(actual_cash=0, closing_notes=None, shift_name=None, notes=No
     shift.closing_notes = closing_notes or ""
     shift.close_shift()
 
-    # Closing a till is a final accounting event, not an editable draft. The API
-    # is already role-gated, so submit with server authority even though Cashier
-    # has no general-purpose submit permission on the DocType form.
     shift.flags.ignore_permissions = True
     shift.submit()
     shift.reload()
@@ -124,6 +129,8 @@ def close_pos_shift(actual_cash=0, closing_notes=None, shift_name=None, notes=No
     return {
         "success": True,
         "shift_id": shift.name,
+        "branch": getattr(shift, "branch", None),
+        "stock_location": getattr(shift, "stock_location", None),
         "opening_cash": flt(shift.opening_cash, 2),
         "expected_cash": flt(shift.expected_cash, 2),
         "actual_cash": flt(shift.actual_cash, 2),
