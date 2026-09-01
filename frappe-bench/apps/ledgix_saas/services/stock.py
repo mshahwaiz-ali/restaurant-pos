@@ -4,35 +4,162 @@ import frappe
 from frappe.utils import flt
 
 
-def _post_movement(*, item, quantity, movement_type, reference_doctype, reference_name, source, rate=0, note=None, movement_date=None):
-	"""Post exactly one movement per document/item/direction.
+def _balance_key(stock_location, item):
+	return f"{stock_location}::{item}"
 
-	Document line items may contain the same Item more than once. Callers aggregate
-	those rows before entering this boundary, so idempotence is keyed by the stable
-	document/item/direction identity instead of the quantity value.
+
+def ensure_stock_balance(item, stock_location):
+	"""Ensure the materialized item/location balance row exists.
+
+	Callers that mutate stock lock the Item row before entering this helper, which
+	serializes first-row creation for an item and avoids duplicate balance races.
 	"""
+	if not item or not stock_location:
+		frappe.throw("Item and Stock Location are required for stock balance.")
+
+	branch = frappe.db.get_value(
+		"Ledgix Stock Location",
+		{"name": stock_location, "is_active": 1},
+		"branch",
+	)
+	if not branch:
+		frappe.throw(f"Stock Location {stock_location} is inactive or does not exist.")
+
+	key = _balance_key(stock_location, item)
+	if frappe.db.exists("Ledgix Stock Balance", key):
+		return key
+
+	doc = frappe.new_doc("Ledgix Stock Balance")
+	doc.branch = branch
+	doc.stock_location = stock_location
+	doc.item = item
+	doc.quantity = 0
+	doc.valuation_rate = max(flt(frappe.db.get_value("Ledgix Item", item, "cost_price") or 0), 0)
+	try:
+		doc.insert(ignore_permissions=True)
+	except frappe.DuplicateEntryError:
+		pass
+	return key
+
+
+def get_location_stock(item, stock_location, *, for_update=False):
+	if not item or not stock_location:
+		return 0.0
+
+	if for_update:
+		from ledgix_saas.api.stock_identity import lock_item_stock_row
+
+		lock_item_stock_row(item)
+		key = ensure_stock_balance(item, stock_location)
+		rows = frappe.db.sql(
+			"""
+			SELECT name, quantity, valuation_rate
+			FROM `tabLedgix Stock Balance`
+			WHERE name = %s
+			FOR UPDATE
+			""",
+			(key,),
+			as_dict=True,
+		)
+		return flt(rows[0].quantity) if rows else 0.0
+
+	return flt(
+		frappe.db.get_value(
+			"Ledgix Stock Balance",
+			{"stock_location": stock_location, "item": item},
+			"quantity",
+		)
+		or 0
+	)
+
+
+def get_total_stock(item):
+	if not frappe.db.exists("DocType", "Ledgix Stock Balance"):
+		return flt(frappe.db.get_value("Ledgix Item", item, "current_stock") or 0)
+
+	return flt(
+		frappe.db.sql(
+			"SELECT COALESCE(SUM(quantity), 0) FROM `tabLedgix Stock Balance` WHERE item=%s",
+			(item,),
+		)[0][0]
+	)
+
+
+def refresh_stock_balance_valuation(item, valuation_rate=None):
+	"""Keep balance valuation display aligned with the item-level moving average.
+
+	Quantity is location-authoritative. Valuation remains item-level in Restaurant
+	V1 so transfers do not create artificial gains/losses between locations.
+	"""
+	if not frappe.db.exists("DocType", "Ledgix Stock Balance"):
+		return
+
+	rate = (
+		max(flt(valuation_rate), 0)
+		if valuation_rate is not None
+		else max(flt(frappe.db.get_value("Ledgix Item", item, "cost_price") or 0), 0)
+	)
+	frappe.db.sql(
+		"""
+		UPDATE `tabLedgix Stock Balance`
+		SET valuation_rate=%s,
+		    stock_value=quantity * %s
+		WHERE item=%s
+		""",
+		(rate, rate, item),
+	)
+
+
+def _post_movement(
+	*,
+	item,
+	quantity,
+	movement_type,
+	reference_doctype,
+	reference_name,
+	source,
+	branch,
+	stock_location,
+	rate=0,
+	note=None,
+	movement_date=None,
+):
+	"""Post exactly one movement per document/item/location/direction."""
+	from ledgix_saas.services.organization import resolve_branch_location
+
+	branch, stock_location = resolve_branch_location(
+		branch,
+		stock_location,
+		enforce_access=False,
+	)
+
 	existing = frappe.db.get_value(
 		"Ledgix Stock Movement",
 		{
 			"reference_doctype": reference_doctype,
 			"reference_name": reference_name,
 			"item": item,
+			"stock_location": stock_location,
 			"movement_type": movement_type,
 			"docstatus": ["!=", 2],
 		},
-		["name", "quantity", "valuation_rate"],
+		["name", "quantity", "valuation_rate", "branch"],
 		as_dict=True,
 	)
 	if existing:
 		if abs(flt(existing.quantity) - flt(quantity)) > 0.000001:
 			frappe.throw(
-				f"Stock movement {existing.name} already exists for {reference_doctype} {reference_name} "
-				f"and item {item} with a different quantity."
+				f"Stock movement {existing.name} already exists for {reference_doctype} {reference_name}, "
+				f"item {item}, location {stock_location} with a different quantity."
 			)
+		if existing.branch and existing.branch != branch:
+			frappe.throw(f"Stock movement {existing.name} belongs to a different branch.")
 		return existing.name
 
 	movement = frappe.new_doc("Ledgix Stock Movement")
 	movement.item = item
+	movement.branch = branch
+	movement.stock_location = stock_location
 	movement.quantity = flt(quantity)
 	movement.valuation_rate = max(flt(rate), 0)
 	movement.movement_type = movement_type
@@ -44,6 +171,7 @@ def _post_movement(*, item, quantity, movement_type, reference_doctype, referenc
 	if note and meta.has_field("reference_note"):
 		movement.reference_note = note
 	from ledgix_saas.api.stock_ops import apply_movement_source
+
 	apply_movement_source(movement, source)
 	movement.insert(ignore_permissions=True)
 	movement.submit()
@@ -82,6 +210,8 @@ def post_sale_movements(sale):
 			reference_doctype="Ledgix Sale",
 			reference_name=sale.name,
 			source="Sale",
+			branch=sale.branch,
+			stock_location=sale.stock_location,
 		)
 
 
@@ -100,15 +230,14 @@ def post_purchase_movements(purchase):
 			reference_doctype="Ledgix Purchase",
 			reference_name=purchase.name,
 			source="Purchase",
+			branch=purchase.branch,
+			stock_location=purchase.stock_location,
 			movement_date=getattr(purchase, "purchase_date", None),
 		)
 
 
 def update_purchase_average_costs(purchase):
-	"""Compatibility no-op.
-
-	Moving-average valuation is owned by Ledgix Stock Movement.on_submit in V2.
-	"""
+	"""Compatibility no-op; Stock Movement owns moving-average valuation."""
 	return None
 
 
@@ -134,6 +263,8 @@ def post_sales_return_movements(sales_return):
 			reference_doctype="Ledgix Sales Return",
 			reference_name=sales_return.name,
 			source="Return",
+			branch=sales_return.branch,
+			stock_location=sales_return.stock_location,
 			note=f"Return against {sales_return.original_sale}",
 		)
 
@@ -178,8 +309,6 @@ def _legacy_reference_rate(row):
 		qty = flt(values.qty)
 		return flt(values.value) / qty if qty > 0 else None
 
-	# OUT movements do not alter moving-average cost, so their missing valuation
-	# does not block a rebuild.
 	if row.movement_type == "OUT":
 		return 0.0
 
@@ -187,27 +316,27 @@ def _legacy_reference_rate(row):
 
 
 def rebuild_item_average_cost(item, exclude_movement=None):
-	"""Replay submitted inventory events to rebuild moving-average valuation.
+	"""Replay submitted inventory events to rebuild item-level moving-average cost."""
+	movement_meta = frappe.get_meta("Ledgix Stock Movement")
+	fields = [
+		"name",
+		"item",
+		"movement_type",
+		"movement_source",
+		"quantity",
+		"valuation_rate",
+		"reference_doctype",
+		"reference_name",
+		"movement_date",
+		"creation",
+	]
+	if movement_meta.has_field("previous_quantity"):
+		fields.append("previous_quantity")
 
-	The live average is updated when movements are actually posted, so replay uses
-	immutable creation/posting order. `movement_date` remains the business date for
-	reporting and may legitimately be backdated.
-	"""
 	rows = frappe.get_all(
 		"Ledgix Stock Movement",
 		filters={"item": item, "docstatus": 1},
-		fields=[
-			"name",
-			"item",
-			"movement_type",
-			"movement_source",
-			"quantity",
-			"valuation_rate",
-			"reference_doctype",
-			"reference_name",
-			"movement_date",
-			"creation",
-		],
+		fields=fields,
 		order_by="creation asc, name asc",
 		limit_page_length=0,
 	)
@@ -219,10 +348,12 @@ def rebuild_item_average_cost(item, exclude_movement=None):
 			continue
 
 		movement_qty = flt(row.quantity)
-		if movement_qty <= 0:
+		if movement_qty < 0:
 			continue
 
 		if row.movement_type == "IN":
+			if movement_qty <= 0:
+				continue
 			rate = row.valuation_rate
 			if rate is None:
 				rate = _legacy_reference_rate(row)
@@ -240,12 +371,26 @@ def rebuild_item_average_cost(item, exclude_movement=None):
 		elif row.movement_type == "OUT":
 			qty = max(qty - movement_qty, 0)
 		elif row.movement_type == "ADJUSTMENT":
-			qty = movement_qty
+			previous_quantity = getattr(row, "previous_quantity", None)
+			if previous_quantity is None:
+				# Legacy adjustment was a global quantity snapshot.
+				qty = movement_qty
+			else:
+				qty = max(qty + movement_qty - flt(previous_quantity), 0)
 			if row.valuation_rate is not None:
 				average = max(flt(row.valuation_rate), 0)
 
 	item_doc = frappe.get_doc("Ledgix Item", item)
-	item_doc.cost_price = flt(average, 6) if qty > 0 else 0
+	materialized_qty = get_total_stock(item)
+	item_doc.current_stock = materialized_qty
+	item_doc.cost_price = flt(average, 6) if materialized_qty > 0 else 0
+	item_doc.flags.allow_stock_update = True
 	item_doc.flags.allow_cost_update = True
 	item_doc.save(ignore_permissions=True)
-	return {"updated": True, "quantity": qty, "average_cost": flt(item_doc.cost_price, 6)}
+	refresh_stock_balance_valuation(item, item_doc.cost_price)
+	return {
+		"updated": True,
+		"quantity": materialized_qty,
+		"ledger_quantity": qty,
+		"average_cost": flt(item_doc.cost_price, 6),
+	}
